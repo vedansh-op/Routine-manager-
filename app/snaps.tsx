@@ -19,6 +19,7 @@ type PendingSnap = {
   space_id: string;
   sender_id: string;
   recipient_id: string;
+  recipient_device_id: string;
   object_path: string;
   status: "uploading" | "pending" | "received";
   ephemeral_public_key: string;
@@ -40,6 +41,8 @@ export default function SnapMemoriesScreen() {
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [partnerId, setPartnerId] = useState<string | null>(null);
   const [partnerReady, setPartnerReady] = useState(false);
+  const [partnerDeviceId, setPartnerDeviceId] = useState<string | null>(null);
+  const [partnerPublicKeyHex, setPartnerPublicKeyHex] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingSnap[]>([]);
   const [localSnaps, setLocalSnaps] = useState<LocalSnap[]>([]);
   const [deviceKey, setDeviceKey] = useState<DeviceCryptoKey | null>(null);
@@ -60,7 +63,7 @@ export default function SnapMemoriesScreen() {
       setLocalSnaps(snaps);
 
       if (!supabase) {
-        setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPending([]);
+        setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPartnerDeviceId(null); setPartnerPublicKeyHex(null); setPending([]);
         return;
       }
       const { data: membership, error: memberError } = await supabase
@@ -77,12 +80,15 @@ export default function SnapMemoriesScreen() {
       setSpaceId(membership.space_id);
       const partner = await getPartnerPublicKey(membership.space_id, user.id);
       setPartnerId(partner?.userId ?? null);
-      setPartnerReady(Boolean(partner?.publicKeyHex));
+      setPartnerDeviceId(partner?.deviceId ?? null);
+      setPartnerPublicKeyHex(partner?.publicKeyHex ?? null);
+      setPartnerReady(Boolean(partner?.deviceId && partner?.publicKeyHex));
 
       const { data, error } = await supabase
         .from("snap_deliveries")
         .select("id,space_id,sender_id,recipient_id,object_path,status,ephemeral_public_key,wrap_salt,wrap_nonce,wrapped_file_key,content_nonce,mime_type,file_size_bytes,captured_at")
         .eq("recipient_id", user.id)
+        .eq("recipient_device_id", key.deviceId)
         .eq("status", "pending")
         .order("created_at", { ascending: true });
       if (error) throw error;
@@ -108,7 +114,7 @@ export default function SnapMemoriesScreen() {
       Alert.alert("Connect your shared space", "Create or join the two-person shared space first.");
       return;
     }
-    if (!partnerReady) {
+    if (!partnerReady || !partnerId || !partnerDeviceId || !partnerPublicKeyHex) {
       Alert.alert("Ask your partner to open ONE-OS", "Their device needs to register its private photo-receiving key once. They can open this screen while signed in.");
       return;
     }
@@ -133,20 +139,11 @@ export default function SnapMemoriesScreen() {
       const mimeType = asset.mimeType && ["image/jpeg", "image/png", "image/webp", "image/heic"].includes(asset.mimeType)
         ? asset.mimeType : "image/jpeg";
 
-      const { data: keyRows, error: keyError } = await supabase
-        .from("device_crypto_keys")
-        .select("public_key,last_seen_at")
-        .eq("user_id", partnerId)
-        .order("last_seen_at", { ascending: false })
-        .limit(1);
-      if (keyError) throw keyError;
-      const recipientPublicKeyHex = keyRows?.[0]?.public_key;
-      if (!recipientPublicKeyHex) throw new Error("Your partner's device key is not available yet. Ask them to open ONE-OS.");
-
-      const envelope = encryptSnap(bytes, recipientPublicKeyHex);
+      const envelope = encryptSnap(bytes, partnerPublicKeyHex);
       const { data, error } = await supabase.rpc("create_snap_delivery", {
         p_space_id: spaceId,
         p_recipient_id: partnerId,
+        p_recipient_device_id: partnerDeviceId,
         p_ephemeral_public_key: envelope.ephemeralPublicKey,
         p_wrap_salt: envelope.wrapSalt,
         p_wrap_nonce: envelope.wrapNonce,
