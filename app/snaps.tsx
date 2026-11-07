@@ -228,7 +228,8 @@ export default function SnapMemoriesScreen() {
       if (uploadError) throw uploadError;
 
       // Keep a private encrypted copy on the sender's device before finalizing delivery.
-      await saveLocalSnap(user.id, created.delivery_id, mimeType, capturedAt, "sent", bytes, created.delivery_id);
+      const senderCopy = await saveLocalSnap(user.id, created.delivery_id, mimeType, capturedAt, "sent", bytes, created.delivery_id);
+      setLocalSnaps(old => [senderCopy, ...old.filter(snap => snap.id !== senderCopy.id)]);
 
       const { error: finalizeError } = await supabase.rpc("finalize_snap_upload", {
         p_delivery_id: created.delivery_id,
@@ -246,10 +247,13 @@ export default function SnapMemoriesScreen() {
     if (!user || !supabase || !deviceKey) return;
     setReceivingId(item.id);
     try {
-      // If acknowledgement previously failed, verify the existing encrypted local copy and retry safely.
-      let existing = localSnaps.find(local => local.deliveryId === item.id);
+      // Re-read the durable vault on every attempt. React state may be stale after an
+      // earlier download succeeded but the cloud acknowledgement failed.
+      const savedSnaps = await getLocalSnaps(user.id);
+      let existing = savedSnaps.find(local => local.deliveryId === item.id || local.id === item.id);
       if (existing) {
         await readLocalSnap(user.id, existing);
+        setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
       } else {
         if (!item.object_path || !item.ephemeral_public_key || !item.wrap_salt || !item.wrap_nonce || !item.wrapped_file_key || !item.content_nonce) {
           throw new Error("This delivery is missing its encryption envelope.");
@@ -272,6 +276,8 @@ export default function SnapMemoriesScreen() {
           user.id, item.id, item.mime_type, item.captured_at, "received", plaintext, item.id,
         );
         plaintext.fill(0);
+        // Show the durable local copy immediately; acknowledgement is a separate cloud step.
+        setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
       }
 
       const { error: ackError } = await supabase.functions.invoke("ack-snap", {
