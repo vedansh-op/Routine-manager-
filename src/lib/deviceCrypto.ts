@@ -19,7 +19,7 @@ function fromHex(value: string): Uint8Array {
 }
 
 /** Keeps each account's X25519 private key in Android Keystore and publishes only the public key. */
-export async function ensureDeviceCryptoKey(userId: string): Promise<DeviceCryptoKey> {
+async function createDeviceCryptoKey(userId: string): Promise<DeviceCryptoKey> {
   if (!supabase) throw new Error("Connect Supabase before registering a device key.");
   const deviceAlias = "one-os-snap-device:" + userId;
   const secretAlias = "one-os-snap-x25519:" + userId;
@@ -76,4 +76,18 @@ export async function getPartnerPublicKey(spaceId: string, ownUserId: string): P
     .maybeSingle();
   if (keyError) throw keyError;
   return device?.public_key ? { userId: partner.user_id, publicKeyHex: device.public_key } : null;
+}
+
+
+const keyRegistrations = new Map<string, Promise<DeviceCryptoKey>>();
+
+/** Coalesces concurrent registration requests so two screens never race to create different first keys. */
+export function ensureDeviceCryptoKey(userId: string): Promise<DeviceCryptoKey> {
+  const active = keyRegistrations.get(userId);
+  if (active) return active;
+  const pending = createDeviceCryptoKey(userId).finally(() => {
+    if (keyRegistrations.get(userId) === pending) keyRegistrations.delete(userId);
+  });
+  keyRegistrations.set(userId, pending);
+  return pending;
 }
