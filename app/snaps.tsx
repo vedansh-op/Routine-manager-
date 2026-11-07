@@ -86,7 +86,7 @@ export default function SnapMemoriesScreen() {
         .maybeSingle();
       if (memberError) throw memberError;
       if (!membership?.space_id) {
-        setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPending([]);
+        setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPartnerDeviceId(null); setPartnerPublicKeyHex(null); setPending([]);
         return;
       }
       setSpaceId(membership.space_id);
