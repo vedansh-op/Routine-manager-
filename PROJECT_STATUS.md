@@ -16,7 +16,7 @@
 - [x] Encrypted local personal data using XChaCha20-Poly1305 and per-account keys held in Expo SecureStore.
 - [x] Weekly aggregate reports; raw task titles, notes, and daily history are not uploaded.
 - [x] Shared activity calendar with native date/time selection, UTC storage, per-viewer timezone rendering, and a Portugal-time scheduling preview.
-- [x] Photo capture/library picker, encrypted send, inbox, recipient decrypt/save, encrypted local photo vault, and date-based photo calendar.
+- [x] Photo capture/library picker requests EXIF capture timestamps, encrypted send, inbox, recipient decrypt/save, encrypted local photo vault, date-based photo calendar, and idempotent acknowledgement retries after a lost success response.
 - [x] Per-device X25519 keys stored in SecureStore; public keys are registered in Supabase.
 - [x] Server-observed presence heartbeat and photo acknowledgement/expiry Edge Functions.
 - [x] First-contact partner-key verification using a shared X25519 fingerprint compared out-of-band and a write-once local key pin.
@@ -49,6 +49,12 @@ Never put the Supabase service-role key in the Android app, APK, or Git reposito
 - The server expires only pending cloud photos when the recipient has had no successful authenticated heartbeat for 72 hours. Offline app opens do not reset the server timer.
 - App uninstall removes local detailed history, local photo files, and device private keys. There is no recovery mechanism for those keys yet.
 - First-contact fingerprint verification and write-once local pinning are implemented, but must be tested on both devices. A reviewed key-rotation/recovery flow is still missing.
+
+## Recent reliability fixes
+- [x] Corrected the shared-space invite renewal SQL function: one definition, valid `$` delimiters, owner-only renewal, and invalidation of older unused codes.
+- [x] Recipient snap retries reuse the durable encrypted local copy and treat a missing delivery row as an already-completed acknowledgement after a lost success response.
+- [x] Camera and gallery photo pickers request EXIF metadata; capture dates are parsed from `DateTimeOriginal` when supplied.
+- [x] Android CI now explicitly enables JavaScript bundling for the debug variant and checks for a non-empty `index.android.bundle` before artifact upload.
 
 ## Android build status
 - [x] Confirm GitHub Actions run #69 completes successfully (commit `98fb20dedb1dd532912ad85f2c0e285b4ae84625` — offline local photo-memory loading fix).
