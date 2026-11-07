@@ -171,3 +171,35 @@ using (
 
 comment on table public.photo_deliveries is
   'Encrypted photo delivery metadata only. Photo bytes must be encrypted on-device; wrapped_file_key is an opaque recipient-only envelope.';
+
+
+-- Recipient deletes the cloud ciphertext after verified local save and acknowledgement.
+drop policy if exists "ONE-OS recipient deletes acknowledged ciphertext" on storage.objects;
+create policy "ONE-OS recipient deletes acknowledged ciphertext"
+on storage.objects for delete to authenticated
+using (
+  bucket_id = 'oneos-private-snaps'
+  and exists (
+    select 1 from public.photo_deliveries d
+    where d.object_path = name
+      and d.recipient_id = auth.uid()
+      and d.status = 'delivered'
+  )
+);
+
+create or replace function public.finalize_photo_delivery(p_delivery_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  delete from public.photo_deliveries
+  where id = p_delivery_id
+    and recipient_id = auth.uid()
+    and status = 'delivered';
+  return found;
+end;
+$$;
+revoke all on function public.finalize_photo_delivery(uuid) from public;
+grant execute on function public.finalize_photo_delivery(uuid) to authenticated;
