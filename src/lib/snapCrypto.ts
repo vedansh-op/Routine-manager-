@@ -4,7 +4,7 @@ import { hkdf } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 
-const KEY_WRAP_INFO = new TextEncoder().encode("ONE-OS shared snap file-key envelope v1");
+const KEY_WRAP_INFO = Uint8Array.from("ONE-OS shared snap file-key envelope v1", character => character.charCodeAt(0));
 const toHex = (bytes: Uint8Array) =>
   Array.from(bytes, value => value.toString(16).padStart(2, "0")).join("");
 
