@@ -42,7 +42,7 @@ function localDateKey(date: Date): string {
 
 function captureTimestamp(exifValue: unknown): string {
   if (typeof exifValue === "string") {
-    const match = exifValue.match(/^(\\d{4})[:\\-](\\d{2})[:\\-](\\d{2})[ T](\\d{2}):(\\d{2}):(\\d{2})/);
+    const match = exifValue.match(/^(\d{4})[:-](\d{2})[:-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
     if (match) {
       const [, year, month, day, hour, minute, second] = match;
       const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
