@@ -82,3 +82,10 @@ The 202611070003_weekly_reports.sql migration adds a small cloud table for aggre
 The Our Time screen displays the current device timezone beside mainland Portugal (Europe/Lisbon). It uses IANA timezone rules, so Portugal's daylight-saving offset changes are handled automatically. Shared event timestamps should be stored as UTC instants and formatted separately for each member.
 
 Not yet complete: weekly report generation/upload, encrypted local database storage, calendar/photo delivery, 72-hour server cleanup, and two-device testing. Current task/habit persistence still uses AsyncStorage and is not yet encrypted. Apply migrations 1, 2, and 3 in order before testing the full cloud features.
+
+
+## Phase 4 — Shared activity calendar
+
+The shared calendar stores only events explicitly added to the shared space. Each event is stored as a UTC instant and rendered using the viewing member's device timezone. The database migration enforces shared-space membership for reads and creation, and only the creator can edit or delete their event. Apply `202611070004_shared_activity_calendar.sql` after migrations 1–3.
+
+The calendar is an activity foundation, not yet the photo-memory implementation. Photo capture, encryption, private device storage, delivery acknowledgement, and the 72-hour server-side expiry are still pending.
