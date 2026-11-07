@@ -39,12 +39,12 @@ language sql
 stable
 security definer
 set search_path = ''
-as $
+as $$
   select exists (
     select 1 from public.space_members m
     where m.space_id = p_space_id and m.user_id = (select auth.uid())
   );
-$;
+$$;
 
 revoke all on function public.is_space_member(uuid) from public;
 grant execute on function public.is_space_member(uuid) to authenticated;
