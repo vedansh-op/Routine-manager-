@@ -7,12 +7,12 @@ A personal Android operating system for daily execution: tasks, routines, habits
 ## Project status
 
 - [x] Repository selected: `vedansh-op/Routine-manager-`
-- [x] Empty GitHub repository verified; default branch: `main`
-- [x] Initial product architecture and Android build path documented
-- [ ] Import the original Stitch design bundle (HTML prototypes, PNG previews, design-system docs)
-- [ ] Implement the Expo / React Native application
-- [ ] Add persistent local storage and shared data layer
-- [ ] Validate on a physical Android device
+- [x] Expo / React Native TypeScript Android application scaffold
+- [x] Home, Tasks, Habits, and Insights screens with shared local persistence
+- [x] Supabase authentication source implementation
+- [x] Code-only shared-space database and app screen foundation
+- [ ] Configure Supabase credentials and apply database migrations
+- [ ] Validate on two physical Android accounts/devices
 - [ ] Configure an APK build and publish a tested APK to GitHub Releases
 
 ## Product scope
@@ -51,3 +51,23 @@ The app now includes Supabase email/password sign-up and sign-in, persisted sess
 Only the Supabase publishable/anon key belongs in the app. Never use the service-role key in an APK. The database migration enables RLS and limits each user to their own profile.
 
 **Build note:** Phase 1 source code is committed, but it is not end-to-end verified until the Supabase project is configured and a real Android sign-up/sign-in/reset flow is tested.
+
+
+## Phase 2 — Connect two people using an invitation code
+
+The app uses a code-only flow (no invitation URLs):
+1. The first signed-in person creates a shared space.
+2. ONE-OS generates an 8-character, single-use code.
+3. The second person signs in with their own account and enters the code.
+4. Both accounts become members of the same shared space. A space is limited to two members.
+
+Codes expire after seven days. The database stores a SHA-256 hash of each code, not the plaintext code. Membership changes are performed through authenticated database functions.
+
+### Apply the Phase 2 migration
+
+After applying the Phase 1 migration, open Supabase → SQL Editor and run the complete contents of:
+`supabase/migrations/202611070002_shared_spaces_invites.sql`
+
+Then rebuild the app with the Supabase Project URL and publishable/anon key configured. Test creation with one account and code redemption with a second account.
+
+The app currently has the Create space and Join with a code screen. Shared task/habit selection and realtime shared-data sync are later phases; connecting accounts does not yet make all personal data visible to the other person.
