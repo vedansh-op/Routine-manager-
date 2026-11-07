@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
   const { data: stale, error } = await supabase
     .from("photo_deliveries")
     .select("id, object_path, recipient_id, space_id")
-    .eq("status", "pending")
+    .in("status", ["pending", "delivered"])
     .limit(500);
 
   if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
@@ -31,16 +31,18 @@ Deno.serve(async (req) => {
   let expired = 0;
   const failures: string[] = [];
   for (const delivery of stale ?? []) {
-    const { data: presence, error: presenceError } = await supabase
-      .from("space_member_presence")
-      .select("last_seen_at")
-      .eq("space_id", delivery.space_id)
-      .eq("user_id", delivery.recipient_id)
-      .maybeSingle();
+    if (delivery.status === "pending") {
+      const { data: presence, error: presenceError } = await supabase
+        .from("space_member_presence")
+        .select("last_seen_at")
+        .eq("space_id", delivery.space_id)
+        .eq("user_id", delivery.recipient_id)
+        .maybeSingle();
 
-    if (presenceError) { failures.push(delivery.id); continue; }
-    const lastSeen = presence?.last_seen_at ? Date.parse(presence.last_seen_at) : 0;
-    if (lastSeen > cutoffMs) continue;
+      if (presenceError) { failures.push(delivery.id); continue; }
+      const lastSeen = presence?.last_seen_at ? Date.parse(presence.last_seen_at) : 0;
+      if (lastSeen > cutoffMs) continue;
+    }
 
     const { error: removeError } = await supabase.storage
       .from("oneos-private-snaps")
