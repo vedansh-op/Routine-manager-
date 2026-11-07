@@ -28,7 +28,7 @@ function decodeUtf8(value: Uint8Array): string {
   return decodeURIComponent(encoded);
 }
 
-async function getUserKey(userId: string): Promise<Uint8Array> {
+async function createUserKey(userId: string): Promise<Uint8Array> {
   const alias = KEY_PREFIX + userId;
   let keyHex = await SecureStore.getItemAsync(alias);
   if (!keyHex) {
@@ -40,6 +40,19 @@ async function getUserKey(userId: string): Promise<Uint8Array> {
   const key = fromHex(keyHex);
   if (key.length !== 32) throw new Error("The local encryption key is invalid.");
   return key;
+}
+
+const userKeyLoads = new Map<string, Promise<Uint8Array>>();
+
+/** Coalesces parallel first-run reads so the task store and photo vault cannot create different keys. */
+function getUserKey(userId: string): Promise<Uint8Array> {
+  const active = userKeyLoads.get(userId);
+  if (active) return active;
+  const pending = createUserKey(userId).finally(() => {
+    if (userKeyLoads.get(userId) === pending) userKeyLoads.delete(userId);
+  });
+  userKeyLoads.set(userId, pending);
+  return pending;
 }
 
 /** Encrypts each stored value with a fresh XChaCha20-Poly1305 nonce. */
