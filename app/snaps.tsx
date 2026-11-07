@@ -35,6 +35,16 @@ type PendingSnap = {
 const MAX_CIPHERTEXT_BYTES = 20 * 1024 * 1024;
 const MAX_PLAINTEXT_BYTES = MAX_CIPHERTEXT_BYTES - 16;
 
+function localDateKey(date: Date): string {
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+}
+
+function snapMonthCells(year: number, month: number): Array<number | null> {
+  const firstDay = new Date(year, month, 1).getDay();
+  const count = new Date(year, month + 1, 0).getDate();
+  return [...Array(firstDay).fill(null), ...Array.from({ length: count }, (_, index) => index + 1)];
+}
+
 export default function SnapMemoriesScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -50,6 +60,8 @@ export default function SnapMemoriesScreen() {
   const [busy, setBusy] = useState(false);
   const [receivingId, setReceivingId] = useState<string | null>(null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [selectedMemoryDate, setSelectedMemoryDate] = useState(() => localDateKey(new Date()));
 
   const refresh = useCallback(async () => {
     if (!user) { setLoading(false); return; }
@@ -108,6 +120,9 @@ export default function SnapMemoriesScreen() {
 
   const pendingCount = pending.length;
   const sentCount = useMemo(() => localSnaps.filter(item => item.direction === "sent").length, [localSnaps]);
+  const calendarCells = useMemo(() => snapMonthCells(calendarMonth.getFullYear(), calendarMonth.getMonth()), [calendarMonth]);
+  const memoryDates = useMemo(() => new Set(localSnaps.map(item => localDateKey(new Date(item.capturedAt)))), [localSnaps]);
+  const selectedMemories = localSnaps.filter(item => localDateKey(new Date(item.capturedAt)) === selectedMemoryDate);
 
   async function choosePhoto(source: "camera" | "library") {
     if (!user || !supabase || !spaceId) {
@@ -286,20 +301,39 @@ export default function SnapMemoriesScreen() {
     </>}
 
     <View style={s.card}>
-      <Text style={s.cardTitle}>Your private photo calendar</Text>
-      <Text style={s.muted}>These are memories stored only on this phone. Tap one to open it. They are not automatically exported to your Gallery.</Text>
-      {localSnaps.length ? <View style={s.memoryList}>
-        {localSnaps.map(item => (
+      <Text style={s.cardTitle}>Our private photo calendar</Text>
+      <Text style={s.muted}>Each dot marks a day with a photo saved on this phone. Choose a date to revisit a moment.</Text>
+      <View style={s.monthHeader}>
+        <Pressable onPress={() => setCalendarMonth(old => new Date(old.getFullYear(), old.getMonth() - 1, 1))}><Text style={s.monthArrow}>‹</Text></Pressable>
+        <Text style={s.monthTitle}>{calendarMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</Text>
+        <Pressable onPress={() => setCalendarMonth(old => new Date(old.getFullYear(), old.getMonth() + 1, 1))}><Text style={s.monthArrow}>›</Text></Pressable>
+      </View>
+      <View style={s.calendarGrid}>
+        {["S","M","T","W","T","F","S"].map((day, index) => <Text key={day + index} style={s.weekday}>{day}</Text>)}
+        {calendarCells.map((day, index) => {
+          if (!day) return <View key={"empty-" + index} style={s.calendarDay} />;
+          const key = localDateKey(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day));
+          const active = key === selectedMemoryDate;
+          const hasMemory = memoryDates.has(key);
+          return <Pressable key={key} onPress={() => setSelectedMemoryDate(key)} style={[s.calendarDay, active && s.calendarDaySelected]}>
+            <Text style={[s.calendarDayText, active && s.calendarDayTextSelected]}>{day}</Text>
+            {hasMemory ? <View style={[s.memoryDot, active && s.memoryDotSelected]} /> : null}
+          </Pressable>;
+        })}
+      </View>
+      <Text style={s.selectedDate}>{new Date(selectedMemoryDate + "T12:00:00").toLocaleDateString(undefined, { weekday:"long", day:"numeric", month:"long" })}</Text>
+      {selectedMemories.length ? <View style={s.memoryList}>
+        {selectedMemories.map(item => (
           <Pressable key={item.id} style={s.memory} onPress={() => void openLocal(item)}>
             <View style={s.memoryIcon}><Text style={s.memoryIconText}>✦</Text></View>
             <View style={{flex:1}}>
               <Text style={s.inboxTitle}>{item.direction === "sent" ? "You shared a moment" : "A moment from your partner"}</Text>
-              <Text style={s.muted}>{new Date(item.capturedAt).toLocaleString()}</Text>
+              <Text style={s.muted}>{new Date(item.capturedAt).toLocaleTimeString(undefined, { hour:"2-digit", minute:"2-digit" })}</Text>
             </View>
             <Text style={s.openArrow}>Open →</Text>
           </Pressable>
         ))}
-      </View> : <Text style={s.muted}>Your saved photo memories will appear here.</Text>}
+      </View> : <Text style={s.muted}>No photos saved for this date.</Text>}
     </View>
 
     <View style={s.noteCard}>
@@ -331,6 +365,12 @@ const s = StyleSheet.create({
   sectionRow:{flexDirection:"row",alignItems:"center",justifyContent:"space-between"},refresh:{color:"#c7bfff",fontSize:12,fontWeight:"700"},
   inboxItem:{borderTopWidth:1,borderTopColor:"#2a2e38",paddingTop:13,marginTop:10,flexDirection:"row",alignItems:"center",gap:12},
   inboxTitle:{color:"#f4f2ff",fontSize:13,fontWeight:"700"},receive:{backgroundColor:"#b7adff",paddingHorizontal:16,paddingVertical:10,borderRadius:10,minWidth:80,alignItems:"center"},receiveText:{color:"#101216",fontWeight:"800",fontSize:12},
+  monthHeader:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",marginTop:10,marginBottom:12},monthTitle:{color:"#f4f2ff",fontSize:15,fontWeight:"700"},monthArrow:{color:"#c7bfff",fontSize:27,paddingHorizontal:12},
+  calendarGrid:{flexDirection:"row",flexWrap:"wrap"},weekday:{width:"14.2857%",textAlign:"center",color:"#777d8c",fontSize:10,paddingVertical:7},
+  calendarDay:{width:"14.2857%",height:39,alignItems:"center",justifyContent:"center",borderRadius:10},calendarDaySelected:{backgroundColor:"#b7adff"},
+  calendarDayText:{color:"#d8d9e0",fontSize:12},calendarDayTextSelected:{color:"#101216",fontWeight:"800"},
+  memoryDot:{width:4,height:4,borderRadius:3,backgroundColor:"#b7adff",position:"absolute",bottom:4},memoryDotSelected:{backgroundColor:"#101216"},
+  selectedDate:{color:"#c7bfff",fontSize:12,fontWeight:"700",marginTop:12,marginBottom:5},
   memoryList:{marginTop:6},memory:{flexDirection:"row",alignItems:"center",gap:11,borderTopWidth:1,borderTopColor:"#2a2e38",paddingVertical:12},
   memoryIcon:{width:36,height:36,borderRadius:11,backgroundColor:"#29243a",alignItems:"center",justifyContent:"center"},memoryIconText:{color:"#c7bfff",fontSize:18},
   openArrow:{color:"#c7bfff",fontSize:11,fontWeight:"700"},noteCard:{backgroundColor:"#181a23",borderRadius:16,padding:16,marginTop:13,borderWidth:1,borderColor:"#3b3658"},
