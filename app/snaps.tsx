@@ -39,6 +39,21 @@ function localDateKey(date: Date): string {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
 }
 
+
+function captureTimestamp(exifValue: unknown): string {
+  if (typeof exifValue === "string") {
+    const match = exifValue.match(/^(\\d{4})[:\\-](\\d{2})[:\\-](\\d{2})[ T](\\d{2}):(\\d{2}):(\\d{2})/);
+    if (match) {
+      const [, year, month, day, hour, minute, second] = match;
+      const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+      if (!Number.isNaN(date.getTime())) return date.toISOString();
+    }
+    const parsed = new Date(exifValue);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+  return new Date().toISOString();
+}
+
 function snapMonthCells(year: number, month: number): Array<number | null> {
   const firstDay = new Date(year, month, 1).getDay();
   const count = new Date(year, month + 1, 0).getDate();
@@ -153,6 +168,7 @@ export default function SnapMemoriesScreen() {
       }
       const mimeType = asset.mimeType && ["image/jpeg", "image/png", "image/webp", "image/heic"].includes(asset.mimeType)
         ? asset.mimeType : "image/jpeg";
+      const capturedAt = captureTimestamp(asset.exif?.DateTimeOriginal);
 
       const envelope = encryptSnap(bytes, partnerPublicKeyHex);
       const { data, error } = await supabase.rpc("create_snap_delivery", {
@@ -166,7 +182,7 @@ export default function SnapMemoriesScreen() {
         p_content_nonce: envelope.contentNonce,
         p_mime_type: mimeType,
         p_file_size_bytes: envelope.ciphertext.length,
-        p_captured_at: asset.exif?.DateTimeOriginal ? new Date(asset.exif.DateTimeOriginal).toISOString() : new Date().toISOString(),
+        p_captured_at: capturedAt,
       });
       if (error) throw error;
       const created = Array.isArray(data) ? data[0] : data;
@@ -181,7 +197,7 @@ export default function SnapMemoriesScreen() {
       if (uploadError) throw uploadError;
 
       // Keep a private encrypted copy on the sender's device before finalizing delivery.
-      await saveLocalSnap(user.id, created.delivery_id, mimeType, new Date().toISOString(), "sent", bytes, created.delivery_id);
+      await saveLocalSnap(user.id, created.delivery_id, mimeType, capturedAt, "sent", bytes, created.delivery_id);
 
       const { error: finalizeError } = await supabase.rpc("finalize_snap_upload", {
         p_delivery_id: created.delivery_id,
