@@ -9,8 +9,10 @@ const partnerPinAlias = (userId: string, spaceId: string) =>
   "one-os-snap-partner-pin-v1:" + userId + ":" + spaceId;
 
 /** Short SHA-256 fingerprint to compare with the partner over a separate trusted channel. */
-export function partnerKeyFingerprint(publicKeyHex: string): string {
-  const fingerprint = toHex(sha256(fromHex(publicKeyHex))).slice(0, 32);
+export function partnerKeyFingerprint(ownSecretKey: Uint8Array, partnerPublicKeyHex: string): string {
+  const sharedSecret = x25519.getSharedSecret(ownSecretKey, fromHex(partnerPublicKeyHex));
+  const fingerprint = toHex(sha256(sharedSecret)).slice(0, 32);
+  sharedSecret.fill(0);
   return fingerprint.match(/.{1,4}/g)?.join(" ") ?? fingerprint;
 }
 
