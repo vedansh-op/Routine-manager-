@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Alert, Link, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Link } from "expo-router";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useAppStore, todayKey } from "@/store/AppStore";
 import { useAuth } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
