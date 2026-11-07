@@ -1,0 +1,7 @@
+project_id = "one-os"
+
+[functions.ack-snap]
+verify_jwt = true
+
+[functions.expire-stale-snaps]
+verify_jwt = false
