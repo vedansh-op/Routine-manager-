@@ -97,7 +97,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     const value = title.trim();
     if (value) setTasks(old => [{ id: uid(), title: value, completed: false, createdAt: new Date().toISOString() }, ...old]);
   }, []);
-  const toggleTask = useCallback((id: string) => setTasks(old => old.map(t => t.id === id ? { ...t, completed: !t.completed } : t), []);
+  const toggleTask = useCallback((id: string) => setTasks(old => old.map(t => t.id === id ? { ...t, completed: !t.completed } : t)), []);
   const addHabit = useCallback((title: string) => {
     const value = title.trim();
     if (value) setHabits(old => [{ id: uid(), title: value, createdAt: new Date().toISOString(), archived: false }, ...old]);
