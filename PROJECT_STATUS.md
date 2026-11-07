@@ -51,8 +51,9 @@ Never put the Supabase service-role key in the Android app, APK, or Git reposito
 - First-contact fingerprint verification and write-once local pinning are implemented, but must be tested on both devices. A reviewed key-rotation/recovery flow is still missing.
 
 ## Android build status
-- [x] Confirm GitHub Actions run #68 completes successfully (commit `c565115494c9b422c0a65b3b896c6af8e9a22303`).
-- [x] Confirm downloadable `ONE-OS-debug-apk` artifact `13591414729` belongs to that same successful run (about 44.9 MB; expires 2026-11-21).
+- [x] Confirm GitHub Actions run #69 completes successfully (commit `98fb20dedb1dd532912ad85f2c0e285b4ae84625` — offline local photo-memory loading fix).
+- [x] Confirm downloadable `ONE-OS-debug-apk` artifact `13592199876` belongs to that same successful run (44,884,832 bytes; expires 2026-11-21 22:22 UTC).
+- [x] Verify all nine build job steps completed successfully, including TypeScript validation, native prebuild, APK compile, and artifact upload.
 - [ ] Install and test on a physical Android device.
 - [ ] Test photo send/receive, failed uploads, duplicate acknowledgement, tamper rejection, and 72-hour expiry using both accounts/devices.
 - [ ] Configure production signing and publish a release APK.
@@ -61,7 +62,8 @@ A successful TypeScript check or debug APK build is not proof that Supabase is c
 
 
 ## Latest verified APK
-- GitHub Actions run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42416893979
-- Artifact: `ONE-OS-debug-apk` (artifact ID `13591414729`, 44.9 MB).
-- Build, TypeScript validation, native prebuild, APK compile, and artifact upload all succeeded.
+- GitHub Actions run #69: https://github.com/vedansh-op/Routine-manager-/actions/runs/42419797088
+- Commit: `98fb20dedb1dd532912ad85f2c0e285b4ae84625` (`Keep local photo memories available offline`).
+- Artifact: `ONE-OS-debug-apk` (artifact ID `13592199876`, 44,884,832 bytes; expires 2026-11-21 22:22 UTC).
+- All nine job steps completed successfully, including TypeScript validation, native prebuild, APK compile, and artifact upload.
 - This does not replace physical Android testing or Supabase deployment/two-account testing.
