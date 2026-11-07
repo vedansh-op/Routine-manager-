@@ -185,11 +185,11 @@ export default function SnapMemoriesScreen() {
       if (source === "camera") {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
         if (!permission.granted) throw new Error("Camera permission is needed to capture a snap.");
-        result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.82, allowsEditing: false });
+        result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.82, allowsEditing: false, exif: true });
       } else {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) throw new Error("Photo access permission is needed to choose a snap.");
-        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.82, allowsEditing: false });
+        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.82, allowsEditing: false, exif: true });
       }
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
