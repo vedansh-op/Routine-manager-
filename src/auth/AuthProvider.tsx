@@ -21,10 +21,16 @@ async function acceptAuthUrl(url: string, setRecovery: (value: boolean) => void)
     const hash = new URLSearchParams(parsed.hash.replace(/^#/, ""));
     const accessToken = hash.get("access_token") ?? query.get("access_token");
     const refreshToken = hash.get("refresh_token") ?? query.get("refresh_token");
+    const code = query.get("code");
     const type = hash.get("type") ?? query.get("type");
     if (type === "recovery") setRecovery(true);
-    if (accessToken && refreshToken) {
-      await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+    // Supabase PKCE links return a one-time code; implicit-flow links return tokens.
+    if (code) {
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) throw error;
+    } else if (accessToken && refreshToken) {
+      const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+      if (error) throw error;
     }
   } catch {
     // Ignore unrelated or malformed deep links.
