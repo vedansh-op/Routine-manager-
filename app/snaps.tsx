@@ -8,7 +8,7 @@ import * as ImagePicker from "expo-image-picker";
 import { File } from "expo-file-system";
 import { useAuth } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
-import { DeviceCryptoKey, ensureDeviceCryptoKey, getPartnerPublicKey } from "@/lib/deviceCrypto";
+import { DeviceCryptoKey, ensureDeviceCryptoKey, getPartnerPublicKey, getPinnedPartnerPublicKey, partnerKeyFingerprint, pinPartnerPublicKey } from "@/lib/deviceCrypto";
 import { decryptSnap, encryptSnap } from "@/lib/snapCrypto";
 import {
   LocalSnap, bytesToBase64, getLocalSnaps, readLocalSnap, saveLocalSnap,
@@ -66,6 +66,9 @@ export default function SnapMemoriesScreen() {
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [partnerId, setPartnerId] = useState<string | null>(null);
   const [partnerReady, setPartnerReady] = useState(false);
+  const [partnerTrusted, setPartnerTrusted] = useState(false);
+  const [partnerKeyChanged, setPartnerKeyChanged] = useState(false);
+  const [partnerFingerprint, setPartnerFingerprint] = useState("");
   const [partnerDeviceId, setPartnerDeviceId] = useState<string | null>(null);
   const [partnerPublicKeyHex, setPartnerPublicKeyHex] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingSnap[]>([]);
@@ -90,7 +93,7 @@ export default function SnapMemoriesScreen() {
       setLocalSnaps(snaps);
 
       if (!supabase) {
-        setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPartnerDeviceId(null); setPartnerPublicKeyHex(null); setPending([]);
+        setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPartnerTrusted(false); setPartnerKeyChanged(false); setPartnerFingerprint(""); setPartnerDeviceId(null); setPartnerPublicKeyHex(null); setPending([]);
         return;
       }
       const { data: membership, error: memberError } = await supabase
@@ -109,7 +112,18 @@ export default function SnapMemoriesScreen() {
       setPartnerId(partner?.userId ?? null);
       setPartnerDeviceId(partner?.deviceId ?? null);
       setPartnerPublicKeyHex(partner?.publicKeyHex ?? null);
-      setPartnerReady(Boolean(partner?.deviceId && partner?.publicKeyHex));
+      const hasPartnerKey = Boolean(partner?.deviceId && partner?.publicKeyHex);
+      setPartnerReady(hasPartnerKey);
+      if (partner?.publicKeyHex) {
+        const pinned = await getPinnedPartnerPublicKey(user.id, membership.space_id);
+        setPartnerTrusted(pinned === partner.publicKeyHex);
+        setPartnerKeyChanged(Boolean(pinned && pinned !== partner.publicKeyHex));
+        setPartnerFingerprint(partnerKeyFingerprint(partner.publicKeyHex));
+      } else {
+        setPartnerTrusted(false);
+        setPartnerKeyChanged(false);
+        setPartnerFingerprint("");
+      }
 
       const { data, error } = await supabase
         .from("snap_deliveries")
@@ -138,6 +152,22 @@ export default function SnapMemoriesScreen() {
   const calendarCells = useMemo(() => snapMonthCells(calendarMonth.getFullYear(), calendarMonth.getMonth()), [calendarMonth]);
   const memoryDates = useMemo(() => new Set(localSnaps.map(item => localDateKey(new Date(item.capturedAt)))), [localSnaps]);
   const selectedMemories = localSnaps.filter(item => localDateKey(new Date(item.capturedAt)) === selectedMemoryDate);
+
+  function verifyPartnerKey() {
+    if (!user || !spaceId || !partnerPublicKeyHex || partnerKeyChanged) return;
+    Alert.alert(
+      "Compare partner fingerprint",
+      partnerFingerprint + "\n\nCompare this exact code with your partner through a separate trusted channel (for example, a voice call). Only confirm if both phones show the same code.",
+      [
+        { text: "Not yet", style: "cancel" },
+        { text: "We compared — trust this key", onPress: () => {
+          void pinPartnerPublicKey(user.id, spaceId, partnerPublicKeyHex)
+            .then(() => setPartnerTrusted(true))
+            .catch(error => Alert.alert("Key not pinned", error instanceof Error ? error.message : "Please try again."));
+        } },
+      ],
+    );
+  }
 
   async function choosePhoto(source: "camera" | "library") {
     if (!user || !supabase || !spaceId) {
@@ -285,12 +315,17 @@ export default function SnapMemoriesScreen() {
     </View> : <>
       <View style={s.card}>
         <Text style={s.cardTitle}>Capture or share a photo</Text>
-        <Text style={s.muted}>{partnerReady ? "Your partner's receiving key is available." : "Your partner needs to open ONE-OS once to register their device key."}</Text>
+        <Text style={s.muted}>{partnerReady ? (partnerTrusted ? "Your partner's key is verified on this phone." : partnerKeyChanged ? "SECURITY WARNING: your partner's registered key changed. Sending is blocked." : "Your partner's receiving key is available, but it must be verified once.") : "Your partner needs to open ONE-OS once to register their device key."}</Text>
+        {partnerReady && !partnerTrusted ? <View style={s.fingerprintPanel}>
+          <Text style={s.fingerprintLabel}>PARTNER KEY FINGERPRINT</Text>
+          <Text selectable style={s.fingerprint}>{partnerFingerprint}</Text>
+          {!partnerKeyChanged ? <Pressable style={s.secondary} onPress={verifyPartnerKey}><Text style={s.secondaryText}>Compare & verify key</Text></Pressable> : <Text style={s.securityWarning}>Do not approve this change. A verified key-recovery flow is not available yet.</Text>}
+        </View> : null}
         <View style={s.actionRow}>
-          <Pressable disabled={busy || !partnerReady} style={[s.primary, s.action, (busy || !partnerReady) && s.disabled]} onPress={() => void choosePhoto("camera")}>
+          <Pressable disabled={busy || !partnerReady || !partnerTrusted} style={[s.primary, s.action, (busy || !partnerReady || !partnerTrusted) && s.disabled]} onPress={() => void choosePhoto("camera")}>
             {busy ? <ActivityIndicator color="#101216" /> : <Text style={s.primaryText}>Take a snap</Text>}
           </Pressable>
-          <Pressable disabled={busy || !partnerReady} style={[s.secondary, s.action, (busy || !partnerReady) && s.disabled]} onPress={() => void choosePhoto("library")}>
+          <Pressable disabled={busy || !partnerReady || !partnerTrusted} style={[s.secondary, s.action, (busy || !partnerReady || !partnerTrusted) && s.disabled]} onPress={() => void choosePhoto("library")}>
             <Text style={s.secondaryText}>Choose photo</Text>
           </Pressable>
         </View>
@@ -377,7 +412,7 @@ const s = StyleSheet.create({
   cardTitle:{color:"#f4f2ff",fontSize:17,fontWeight:"700",marginBottom:8},muted:{color:"#9699a5",fontSize:12,lineHeight:19},
   actionRow:{flexDirection:"row",gap:10,marginTop:8},action:{flex:1},primary:{backgroundColor:"#b7adff",padding:14,borderRadius:12,alignItems:"center",marginTop:13},primaryText:{color:"#101216",fontWeight:"800",fontSize:13},
   secondary:{backgroundColor:"#29243a",padding:14,borderRadius:12,alignItems:"center",marginTop:13},secondaryText:{color:"#d8d1ff",fontWeight:"800",fontSize:13},
-  disabled:{opacity:0.45},footnote:{color:"#727987",fontSize:10,lineHeight:16,marginTop:12},
+  disabled:{opacity:0.45},fingerprintPanel:{backgroundColor:"#101216",borderRadius:12,padding:13,marginTop:13},fingerprintLabel:{color:"#9699a5",fontSize:9,letterSpacing:1,fontWeight:"800"},fingerprint:{color:"#c7bfff",fontSize:15,fontWeight:"800",letterSpacing:1.2,marginTop:9,lineHeight:24},securityWarning:{color:"#ffb8b8",fontSize:11,lineHeight:17,marginTop:10},footnote:{color:"#727987",fontSize:10,lineHeight:16,marginTop:12},
   sectionRow:{flexDirection:"row",alignItems:"center",justifyContent:"space-between"},refresh:{color:"#c7bfff",fontSize:12,fontWeight:"700"},
   inboxItem:{borderTopWidth:1,borderTopColor:"#2a2e38",paddingTop:13,marginTop:10,flexDirection:"row",alignItems:"center",gap:12},
   inboxTitle:{color:"#f4f2ff",fontSize:13,fontWeight:"700"},receive:{backgroundColor:"#b7adff",paddingHorizontal:16,paddingVertical:10,borderRadius:10,minWidth:80,alignItems:"center"},receiveText:{color:"#101216",fontWeight:"800",fontSize:12},
