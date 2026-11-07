@@ -74,6 +74,9 @@ declare
 begin
   if v_user is null then raise exception 'Authentication required'; end if;
 
+  -- Serialize membership changes per account across multiple phones/sessions.
+  perform pg_advisory_xact_lock(hashtextextended(v_user::text, 0));
+
   if exists (
     select 1 from public.space_members m
     join public.spaces s on s.id = m.space_id
@@ -109,6 +112,10 @@ declare
   v_count integer;
 begin
   if v_user is null then raise exception 'Authentication required'; end if;
+
+  -- Prevent simultaneous joins/creates from placing one account in two shared spaces.
+  perform pg_advisory_xact_lock(hashtextextended(v_user::text, 0));
+
   if exists (
     select 1 from public.space_members m
     join public.spaces s on s.id = m.space_id
