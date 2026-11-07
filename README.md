@@ -34,7 +34,7 @@ See [PROJECT_STATUS.md](PROJECT_STATUS.md) and [docs/ARCHITECTURE.md](docs/ARCHI
 
 ## Android APK
 
-A debug APK has been generated successfully by GitHub Actions run #51. It is an installable debug build, not yet physically tested. Its GitHub Actions artifact is retained until 21 November 2026. A newer source revision is being rebuilt in run #54; check the Actions page for the newest completed `ONE-OS-debug-apk` artifact.
+A debug APK has been generated successfully by GitHub Actions run #53. It is an installable debug build, not yet physically tested. Its GitHub Actions artifact is retained until 21 November 2026. The latest source revision is being rebuilt in run #54; check the Actions page for the newest completed `ONE-OS-debug-apk` artifact.
 
 
 ## Phase 1 — Authentication
