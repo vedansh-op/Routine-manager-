@@ -74,12 +74,12 @@ export default function Insights() {
     <Text style={s.sub}>A clearer view of your consistency.</Text>
     <View style={s.card}>
       <Text style={s.label}>TASK COMPLETION</Text><Text style={s.value}>{taskRate}%</Text>
-      <View style={s.track}><View style={[s.fill,{width:taskRate+"%"}]}/></View>
+      <View style={s.track}><View style={[s.fill,{width:(taskRate+"%") as `${number}%`}]}/></View>
       <Text style={s.note}>{tasks.filter(t=>t.completed).length} of {tasks.length} tasks completed</Text>
     </View>
     <View style={s.card}>
       <Text style={s.label}>HABITS COMPLETED TODAY</Text><Text style={s.value}>{habits.length ? Math.round(todayHabitCount / habits.length * 100) : 0}%</Text>
-      <View style={s.track}><View style={[s.fill,{width:(habits.length ? todayHabitCount / habits.length * 100 : 0)+"%"}]}/></View>
+      <View style={s.track}><View style={[s.fill,{width:((habits.length ? todayHabitCount / habits.length * 100 : 0)+"%") as `${number}%`}]}/></View>
       <Text style={s.note}>{todayHabitCount} of {habits.length} habits checked today</Text>
     </View>
     <View style={s.card}>
