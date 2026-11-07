@@ -14,7 +14,7 @@ export default function Home() {
     <Text style={s.date}>{new Date().toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric" })}</Text>
     <View style={s.grid}><Card title="TASKS DONE" value={ready ? String(done) + "/" + tasks.length : "—"} hint="Keep your momentum" /><Card title="HABITS TODAY" value={ready ? String(todayHabits) + "/" + habits.length : "—"} hint="Small actions compound" /></View>
     <Text style={s.section}>Your workspace</Text>
-    <Link href="/tasks" style={s.link}>01  Tasks  →</Link><Link href="/habits" style={s.link}>02  Habits  →</Link><Link href="/insights" style={s.link}>03  Insights  →</Link><Link href="/account" style={s.link}>04  Account & security  →</Link>
+    <Link href="/tasks" style={s.link}>01  Tasks  →</Link><Link href="/habits" style={s.link}>02  Habits  →</Link><Link href="/insights" style={s.link}>03  Insights  →</Link><Link href="/account" style={s.link}>04  Account & security  →</Link><Link href="/shared" style={s.link}>05  Shared space  →</Link>
     <Text style={s.footer}>ONE-OS · built around your rhythm</Text>
   </ScrollView>;
 }
