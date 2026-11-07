@@ -59,21 +59,12 @@ Deno.serve(async (request) => {
     return Response.json({ error: "Could not remove the cloud copy", detail: removeError.message }, { status: 502, headers: cors });
   }
 
-  const { error: updateError } = await admin.from("snap_deliveries")
-    .update({
-      status: "received",
-      object_path: null,
-      ephemeral_public_key: null,
-      wrap_salt: null,
-      wrap_nonce: null,
-      wrapped_file_key: null,
-      content_nonce: null,
-      received_at: new Date().toISOString(),
-    })
+  const { error: deleteError } = await admin.from("snap_deliveries")
+    .delete()
     .eq("id", delivery.id)
     .eq("recipient_id", authData.user.id)
     .eq("status", "pending");
 
-  if (updateError) return Response.json({ error: "Cloud file removed but receipt record could not be finalized", detail: updateError.message }, { status: 502, headers: cors });
-  return Response.json({ received: true }, { headers: cors });
+  if (deleteError) return Response.json({ error: "Cloud file removed but delivery metadata could not be cleared", detail: deleteError.message }, { status: 502, headers: cors });
+  return Response.json({ received: true, metadataCleared: true }, { headers: cors });
 });
