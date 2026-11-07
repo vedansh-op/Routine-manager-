@@ -1,22 +1,20 @@
 # ONE-OS project status
 
-## Current baseline
-The GitHub repository was empty when connected. The first commit initializes the project documentation.
+## Completed in GitHub
+- Initialized the repository as an Expo Router / React Native TypeScript Android project.
+- Added app configuration, EAS APK preview profile, TypeScript configuration, and Git ignore rules.
+- Added Home, Tasks, Habits, and Insights screens.
+- Added a shared AsyncStorage-backed store for tasks, habits, and daily habit completions.
+- Connected the screens to the same data source so Home and Insights derive their values from Tasks and Habits.
 
-The original supplied Stitch bundle was inspected locally. It contains:
-- Task-management and habit-tracker HTML prototypes
-- Screen-preview PNGs for Home, Tasks, Habits, and Insights in multiple visual themes
-- Design-system notes
+## Design source audit
+The supplied Stitch bundle was inspected locally. It contains HTML prototypes, screen-preview PNGs, and design-system notes. It does not contain a complete native Android app. The original design assets still need to be imported into `design-source/` and the native UI refined against them.
 
-It does not contain an Expo app, React Native entry point, Android Gradle project, or EAS configuration.
+## Validation still required
+- Install dependencies and run TypeScript checks.
+- Run the app on an Android device and fix runtime/build issues.
+- Verify persistence, date-bound habit completion, and screen layouts.
+- Configure EAS credentials/build and publish a tested APK.
 
-## Next milestones
-1. Import the original design references into `design-source/`.
-2. Implement the Android app scaffold and navigation.
-3. Implement a persistent data layer shared by Home, Tasks, Habits, and Insights.
-4. Match the chosen design system and responsive mobile layouts.
-5. Run type checks and Android builds.
-6. Publish only a successfully built APK.
-
-## Build status
-No APK has been built or tested yet.
+## APK status
+No APK has been built or tested yet. Do not treat the EAS profile as a completed build.
