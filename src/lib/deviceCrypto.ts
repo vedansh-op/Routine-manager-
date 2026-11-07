@@ -1,7 +1,36 @@
 import * as SecureStore from "expo-secure-store";
 import { getRandomBytes } from "expo-crypto";
 import { x25519 } from "@noble/curves/ed25519.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 import { supabase } from "@/lib/supabase";
+
+
+const partnerPinAlias = (userId: string, spaceId: string) =>
+  "one-os-snap-partner-pin-v1:" + userId + ":" + spaceId;
+
+/** Short SHA-256 fingerprint to compare with the partner over a separate trusted channel. */
+export function partnerKeyFingerprint(publicKeyHex: string): string {
+  const fingerprint = toHex(sha256(fromHex(publicKeyHex))).slice(0, 32);
+  return fingerprint.match(/.{1,4}/g)?.join(" ") ?? fingerprint;
+}
+
+export async function getPinnedPartnerPublicKey(userId: string, spaceId: string): Promise<string | null> {
+  return SecureStore.getItemAsync(partnerPinAlias(userId, spaceId));
+}
+
+/** First-contact pinning is write-once; unexpected key changes are blocked, not silently trusted. */
+export async function pinPartnerPublicKey(userId: string, spaceId: string, publicKeyHex: string): Promise<void> {
+  const alias = partnerPinAlias(userId, spaceId);
+  const existing = await SecureStore.getItemAsync(alias);
+  if (existing && existing !== publicKeyHex) {
+    throw new Error("Your partner's registered key has changed. Sending is blocked until a verified key-recovery flow is available.");
+  }
+  if (!existing) {
+    await SecureStore.setItemAsync(alias, publicKeyHex, {
+      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    });
+  }
+}
 
 export type DeviceCryptoKey = {
   deviceId: string;
