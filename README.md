@@ -13,7 +13,8 @@ A personal Android operating system for daily execution: tasks, routines, habits
 - [x] Code-only shared-space database and app screen foundation
 - [ ] Configure Supabase credentials and apply database migrations
 - [ ] Validate on two physical Android accounts/devices
-- [ ] Configure an APK build and publish a tested APK to GitHub Releases
+- [x] Configure GitHub Actions Android debug APK build and generate installable APK artifacts
+- [ ] Physically test the current APK on Android and publish a signed release build
 
 ## Product scope
 
@@ -33,7 +34,7 @@ See [PROJECT_STATUS.md](PROJECT_STATUS.md) and [docs/ARCHITECTURE.md](docs/ARCHI
 
 ## Android APK
 
-An APK is not available yet. It will be generated only after the app is implemented and a build succeeds. The intended free build path is Expo + EAS Build's available free allowance, with the resulting APK attached to a GitHub Release.
+A debug APK has been generated successfully by GitHub Actions run #51. It is an installable debug build, not yet physically tested. Its GitHub Actions artifact is retained until 21 November 2026. A newer source revision is being rebuilt in run #54; check the Actions page for the newest completed `ONE-OS-debug-apk` artifact.
 
 
 ## Phase 1 — Authentication
