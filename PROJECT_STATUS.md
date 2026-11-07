@@ -76,3 +76,21 @@ The weekly_reports table is designed for aggregated summaries only. Do not uploa
 - [ ] Test encryption round-trip, legacy migration, account switching, app restart, and key-loss recovery on a physical Android device.
 
 Security boundary: this protects stored app data at rest using a key held by Android secure storage. It does not protect a compromised/rooted device, and it is not yet an encrypted backup. A clean uninstall removes the app's local data; Supabase weekly reports remain separately available.
+
+
+## Phase 6 — Encrypted shared photo memories (implementation in validation)
+- [x] Add per-device X25519 identity keys; keep private keys in Expo SecureStore and publish only public keys.
+- [x] Add ephemeral X25519 + HKDF-SHA256 key wrapping and XChaCha20-Poly1305 photo encryption.
+- [x] Add local photo vault using app-private file storage and per-account encryption at rest.
+- [x] Add private Storage bucket and participant-only delivery metadata policies.
+- [x] Add authenticated receipt Edge Function: remove cloud ciphertext and clear the delivery key envelope after local save.
+- [x] Add server-observed presence heartbeat and 72-hour inactivity cleanup Edge Function.
+- [x] Add camera/library picker, encrypted sender upload, inbox receive/decrypt/save, and local memory gallery.
+- [ ] Apply migration 202611070005_encrypted_snap_delivery.sql after migrations 001–004.
+- [ ] Deploy ack-snap and expire-stale-snaps Edge Functions; set ONEOS_CRON_SECRET and configure the scheduled worker.
+- [ ] Validate concurrent first-key registration, upload failure cleanup, repeated ack, tamper detection, file permissions, and Android runtime.
+- [ ] Test using both accounts and physical devices in different countries/timezones.
+- [ ] Add multi-device key envelopes/recovery before claiming account-level recovery; current recipient envelope targets one registered device key.
+- [ ] Consider app uninstall/reinstall behaviour: local memories and device private keys are lost; no recovery service exists.
+
+Privacy boundary: only ciphertext and wrapped key metadata are uploaded. Local photo copies are encrypted at rest in app-private storage. The server cannot decrypt photo content. The 72-hour clock depends on a successful online heartbeat, not the device's offline activity.
