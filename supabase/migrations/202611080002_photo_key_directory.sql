@@ -51,3 +51,57 @@ grant execute on function public.register_space_encryption_key(uuid,text) to aut
 
 comment on table public.space_member_encryption_keys is
   'Public X25519 keys only. Corresponding private keys remain in each member device SecureStore.';
+
+
+-- Refuse to create a delivery until the recipient has registered an encryption key.
+create or replace function public.create_photo_delivery(
+  p_space_id uuid,
+  p_recipient_id uuid,
+  p_wrapped_file_key text,
+  p_content_type text,
+  p_byte_size bigint
+)
+returns table(delivery_id uuid, object_path text)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_sender uuid := auth.uid();
+  v_delivery uuid := gen_random_uuid();
+  v_path text;
+begin
+  if v_sender is null then raise exception 'Authentication required'; end if;
+  if p_recipient_id = v_sender then raise exception 'Recipient must be your partner'; end if;
+  if not public.is_space_member(p_space_id) then raise exception 'Not a member of this shared space'; end if;
+  if not exists (
+    select 1 from public.space_members m
+    where m.space_id = p_space_id and m.user_id = p_recipient_id
+  ) then raise exception 'Recipient is not in this shared space'; end if;
+  if not exists (
+    select 1 from public.space_member_encryption_keys k
+    where k.space_id = p_space_id and k.user_id = p_recipient_id
+  ) then raise exception 'Recipient has not registered a photo encryption key'; end if;
+  if p_wrapped_file_key is null or length(p_wrapped_file_key) < 32 or length(p_wrapped_file_key) > 4096 then
+    raise exception 'Invalid encrypted file key envelope';
+  end if;
+  if p_content_type not in ('image/jpeg','image/png','image/webp','image/heic') then
+    raise exception 'Unsupported image type';
+  end if;
+  if p_byte_size is null or p_byte_size < 1 or p_byte_size > 15728640 then
+    raise exception 'Image must be 15 MB or smaller';
+  end if;
+
+  v_path := p_recipient_id::text || '/' || v_delivery::text || '.bin';
+  insert into public.photo_deliveries(
+    id, space_id, sender_id, recipient_id, object_path,
+    wrapped_file_key, content_type, byte_size
+  ) values (
+    v_delivery, p_space_id, v_sender, p_recipient_id, v_path,
+    p_wrapped_file_key, p_content_type, p_byte_size
+  );
+  return query select v_delivery, v_path;
+end;
+$$;
+revoke all on function public.create_photo_delivery(uuid,uuid,text,text,bigint) from public;
+grant execute on function public.create_photo_delivery(uuid,uuid,text,text,bigint) to authenticated;
