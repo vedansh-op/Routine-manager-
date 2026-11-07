@@ -68,7 +68,7 @@ export default function AuthScreen() {
       <Text style={s.title}>{title}</Text>
       <Text style={s.subtitle}>{subtitle}</Text>
       {!isSupabaseConfigured ? <>
-        <View style={s.notice}><Text style={s.noticeTitle}>Authentication setup required</Text><Text style={s.noticeText}>Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to your local .env file, then rebuild the app. Never put a service-role key in the app.</Text></View>
+        <View style={s.notice}><Text style={s.noticeTitle}>Authentication setup required</Text><Text style={s.noticeText}>Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or EXPO_PUBLIC_SUPABASE_ANON_KEY) to your local .env file, then rebuild the app. Never put a service-role key in the app.</Text></View>
       </> : <>
         {activeMode === "signup" && <TextInput value={name} onChangeText={setName} placeholder="Your name (optional)" placeholderTextColor="#777d8c" style={s.input} autoCapitalize="words" />}
         {activeMode !== "recovery" && <TextInput value={email} onChangeText={setEmail} placeholder="Email address" placeholderTextColor="#777d8c" style={s.input} autoCapitalize="none" keyboardType="email-address" autoComplete="email" />}
