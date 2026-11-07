@@ -33,19 +33,29 @@ alter table public.spaces enable row level security;
 alter table public.space_members enable row level security;
 alter table public.space_invitations enable row level security;
 
+create or replace function public.is_space_member(p_space_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $
+  select exists (
+    select 1 from public.space_members m
+    where m.space_id = p_space_id and m.user_id = (select auth.uid())
+  );
+$;
+
+revoke all on function public.is_space_member(uuid) from public;
+grant execute on function public.is_space_member(uuid) to authenticated;
+
 drop policy if exists "Members can view their spaces" on public.spaces;
 create policy "Members can view their spaces" on public.spaces
-  for select using (
-    exists (select 1 from public.space_members m
-      where m.space_id = spaces.id and m.user_id = (select auth.uid()))
-  );
+  for select using (public.is_space_member(id));
 
 drop policy if exists "Members can view space membership" on public.space_members;
 create policy "Members can view space membership" on public.space_members
-  for select using (
-    exists (select 1 from public.space_members mine
-      where mine.space_id = space_members.space_id and mine.user_id = (select auth.uid()))
-  );
+  for select using (public.is_space_member(space_id));
 
 -- No direct client insert/update/delete policies for invitations or memberships.
 -- All membership changes happen through the security-definer RPCs below.
