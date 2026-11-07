@@ -55,7 +55,8 @@ Deno.serve(async (request) => {
 
   // Storage removal is performed before clearing the key envelope. If removal fails,
   // the recipient can retry and the server does not falsely claim the cloud copy is gone.
-  if (removeError) {
+  const isMissingObject = removeError && String(removeError.statusCode) === "404";
+  if (removeError && !isMissingObject) {
     return Response.json({ error: "Could not remove the cloud copy", detail: removeError.message }, { status: 502, headers: cors });
   }
 
