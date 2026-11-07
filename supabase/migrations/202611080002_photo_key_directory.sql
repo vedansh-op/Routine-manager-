@@ -37,12 +37,18 @@ begin
     raise exception 'Invalid X25519 public key';
   end if;
 
+  if exists (
+    select 1 from public.space_member_encryption_keys k
+    where k.space_id = p_space_id
+      and k.user_id = auth.uid()
+      and k.public_key_hex <> p_public_key_hex
+  ) then
+    raise exception 'A different photo key is already registered for this account and space. Key rotation requires a verified recovery flow.';
+  end if;
+
   insert into public.space_member_encryption_keys(space_id, user_id, public_key_hex)
   values (p_space_id, auth.uid(), p_public_key_hex)
-  on conflict (space_id, user_id) do update
-    set public_key_hex = excluded.public_key_hex,
-        updated_at = now()
-    where public.space_member_encryption_keys.public_key_hex = excluded.public_key_hex;
+  on conflict (space_id, user_id) do nothing;
 end;
 $register_key$;
 
