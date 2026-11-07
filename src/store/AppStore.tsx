@@ -1,6 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { AppState } from "react-native";
 import { useAuth } from "@/auth/AuthProvider";
+import { supabase } from "@/lib/supabase";
+import { ensureDeviceCryptoKey } from "@/lib/deviceCrypto";
 import { getEncryptedItem, setEncryptedItem } from "@/lib/secureLocalStore";
 
 export type Task = { id: string; title: string; notes?: string; dueDate?: string; completed: boolean; createdAt: string };
@@ -36,6 +39,25 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [storageUnlocked, setStorageUnlocked] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
+
+  // Presence is server-observed only. An offline device updates this when it next reconnects and foregrounds ONE-OS.
+  useEffect(() => {
+    if (!userId || !supabase) return;
+    let active = true;
+    const heartbeat = async () => {
+      if (!active) return;
+      const { error } = await supabase.rpc("touch_my_presence");
+      if (error && active) console.info("ONE-OS presence sync unavailable:", error.message);
+    };
+    void heartbeat();
+    void ensureDeviceCryptoKey(userId).catch(error => {
+      if (active) console.info("ONE-OS device-key registration unavailable:", error instanceof Error ? error.message : error);
+    });
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") void heartbeat();
+    });
+    return () => { active = false; subscription.remove(); };
+  }, [userId]);
 
   useEffect(() => {
     let cancelled = false;
