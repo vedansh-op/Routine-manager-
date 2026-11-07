@@ -57,7 +57,15 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     const subscription = AppState.addEventListener("change", state => {
       if (state === "active") void heartbeat();
     });
-    return () => { active = false; subscription.remove(); };
+    // Keep a foreground app alive for the server-side 72-hour inactivity clock.
+    const heartbeatInterval = setInterval(() => {
+      if (AppState.currentState === "active") void heartbeat();
+    }, 15 * 60 * 1000);
+    return () => {
+      active = false;
+      subscription.remove();
+      clearInterval(heartbeatInterval);
+    };
   }, [userId]);
 
   useEffect(() => {
