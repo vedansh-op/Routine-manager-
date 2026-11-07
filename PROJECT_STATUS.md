@@ -113,3 +113,15 @@ Privacy boundary: only ciphertext and wrapped key metadata are uploaded. Local p
 - [ ] Apply migration 202611080001_private_photo_delivery.sql after migrations 001–004 and test with both accounts/devices.
 
 Important: this is backend groundwork, not a completed end-to-end photo feature. Do not upload plaintext photos or reuse the local database encryption key for photo sharing. The Edge Function uses the service-role key only in server-side secrets; never put it in the Android app. The 72-hour timer is based on the last successful authenticated heartbeat the server has observed, not the phone's offline clock. Only pending cloud copies are purged; acknowledged deliveries remain subject to recipient local storage.
+
+
+## Phase 7 — Photo encryption key exchange primitives
+- [x] Added a per-account/per-shared-space X25519 identity with private key held in Android SecureStore.
+- [x] Added an authenticated public-key directory for the two shared-space members.
+- [x] Added per-photo random XChaCha20-Poly1305 content-key encryption and ephemeral X25519 + HKDF-SHA256 wrapping.
+- [x] Added helpers to register a local public key, retrieve the partner key, acknowledge verified receipt, and remove cloud ciphertext plus delivery metadata.
+- [ ] Add key fingerprint / first-contact verification so clients can detect unexpected public-key replacement before trusting a partner key.
+- [ ] Complete photo picker/camera, byte reading, encrypted upload, inbox download, decrypt, private-file save, and automatic sync UI.
+- [ ] Verify Noble ESM packages on Hermes/Android and run crypto round-trip/tamper tests on physical devices.
+
+The crypto helpers are not yet wired to a photo UI or tested on Android. A public-key directory alone does not prevent a malicious server from substituting keys; add fingerprint verification before claiming protection against server-side key substitution. One active key per account/shared-space is the initial single-device-per-user model.
