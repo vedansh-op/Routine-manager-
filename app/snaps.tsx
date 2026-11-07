@@ -104,7 +104,7 @@ export default function SnapMemoriesScreen() {
         .maybeSingle();
       if (memberError) throw memberError;
       if (!membership?.space_id) {
-        setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPartnerDeviceId(null); setPartnerPublicKeyHex(null); setPending([]);
+        setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPartnerTrusted(false); setPartnerKeyChanged(false); setPartnerFingerprint(""); setPartnerDeviceId(null); setPartnerPublicKeyHex(null); setPending([]);
         return;
       }
       setSpaceId(membership.space_id);
@@ -118,7 +118,7 @@ export default function SnapMemoriesScreen() {
         const pinned = await getPinnedPartnerPublicKey(user.id, membership.space_id);
         setPartnerTrusted(pinned === partner.publicKeyHex);
         setPartnerKeyChanged(Boolean(pinned && pinned !== partner.publicKeyHex));
-        setPartnerFingerprint(partnerKeyFingerprint(partner.publicKeyHex));
+        setPartnerFingerprint(partnerKeyFingerprint(key.secretKey, partner.publicKeyHex));
       } else {
         setPartnerTrusted(false);
         setPartnerKeyChanged(false);
