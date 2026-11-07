@@ -57,7 +57,7 @@ Only the Supabase publishable/anon key belongs in the app. Never use the service
 
 The app uses a code-only flow (no invitation URLs):
 1. The first signed-in person creates a shared space.
-2. ONE-OS generates an 8-character, single-use code.
+2. ONE-OS generates an 12-character, single-use code.
 3. The second person signs in with their own account and enters the code.
 4. Both accounts become members of the same shared space. A space is limited to two members.
 
