@@ -44,7 +44,7 @@ The app now includes Supabase email/password sign-up and sign-in, persisted sess
 
 1. Create a Supabase project.
 2. In the Supabase SQL Editor, run `supabase/migrations/202611070001_profiles.sql`.
-3. Copy `.env.example` to `.env` and fill in the Project URL and publishable/anon key from Supabase project settings.
+3. Copy `.env.example` to `.env` and fill in the Project URL and publishable key from Supabase project settings.
 4. In Supabase Authentication → URL Configuration, add `oneos://auth` as an allowed redirect URL.
 5. Rebuild the Android app after setting the environment variables.
 
