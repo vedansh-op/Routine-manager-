@@ -89,7 +89,7 @@ begin
   insert into public.space_members(space_id, user_id, role)
   values (v_space, v_user, 'owner');
 
-  v_code := upper(substr(encode(extensions.gen_random_bytes(6), 'hex'), 1, 8));
+  v_code := upper(substr(encode(extensions.gen_random_bytes(8), 'hex'), 1, 12));
   insert into public.space_invitations(space_id, code_hash, created_by, expires_at)
   values (v_space, encode(extensions.digest(v_code, 'sha256'), 'hex'), v_user, v_expiry);
 
