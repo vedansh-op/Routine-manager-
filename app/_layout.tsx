@@ -30,6 +30,8 @@ function SessionGate() {
         .select("space_id").eq("user_id", userId).limit(1).maybeSingle();
       if (!cancelled && data?.space_id) {
         await client.rpc("oneos_heartbeat", { p_space_id: data.space_id });
+        // Register a public recipient key automatically; the private key never leaves SecureStore.
+        await registerMyPhotoKey(userId, data.space_id).catch(() => undefined);
       }
     };
     void heartbeat();
