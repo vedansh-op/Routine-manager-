@@ -5,7 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { AppStoreProvider } from "@/store/AppStore";
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
-import { registerMyPhotoKey } from "@/lib/photoDelivery";
+import { ensureDeviceCryptoKey } from "@/lib/deviceCrypto";
 
 function SessionGate() {
   const { configured, loading, session, recovery } = useAuth();
@@ -31,9 +31,10 @@ function SessionGate() {
       const { data } = await client.from("space_members")
         .select("space_id").eq("user_id", userId).limit(1).maybeSingle();
       if (!cancelled && data?.space_id) {
-        await client.rpc("oneos_heartbeat", { p_space_id: data.space_id });
-        // Register a public recipient key automatically; the private key never leaves SecureStore.
-        await registerMyPhotoKey(userId, data.space_id).catch(() => undefined);
+        // This RPC updates server-observed presence and registered device-key activity.
+        await client.rpc("touch_my_presence");
+        // Register this device's X25519 public key; its private key stays in SecureStore.
+        await ensureDeviceCryptoKey(userId).catch(() => undefined);
       }
     };
     void heartbeat();
