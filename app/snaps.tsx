@@ -85,17 +85,18 @@ export default function SnapMemoriesScreen() {
     if (!user) { setLoading(false); return; }
     setLoading(true);
     try {
-      const [key, snaps] = await Promise.all([
-        ensureDeviceCryptoKey(user.id),
-        getLocalSnaps(user.id),
-      ]);
-      setDeviceKey(key);
+      // Load the encrypted on-device gallery first. It remains usable even if
+      // the network or Supabase is unavailable; remote sync is a separate step.
+      const snaps = await getLocalSnaps(user.id);
       setLocalSnaps(snaps);
+      setDeviceKey(null);
 
       if (!supabase) {
         setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPartnerTrusted(false); setPartnerKeyChanged(false); setPartnerFingerprint(""); setPartnerDeviceId(null); setPartnerPublicKeyHex(null); setPending([]);
         return;
       }
+      const key = await ensureDeviceCryptoKey(user.id);
+      setDeviceKey(key);
       const { data: membership, error: memberError } = await supabase
         .from("space_members")
         .select("space_id")
