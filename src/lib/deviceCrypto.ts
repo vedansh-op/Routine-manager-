@@ -54,7 +54,7 @@ async function createDeviceCryptoKey(userId: string): Promise<DeviceCryptoKey> {
   return { deviceId, secretKey, publicKey, publicKeyHex };
 }
 
-export async function getPartnerPublicKey(spaceId: string, ownUserId: string): Promise<{ userId: string; publicKeyHex: string } | null> {
+export async function getPartnerPublicKey(spaceId: string, ownUserId: string): Promise<{ userId: string; deviceId: string; publicKeyHex: string } | null> {
   if (!supabase) throw new Error("Connect Supabase before sharing photos.");
   const { data: partner, error: partnerError } = await supabase
     .from("space_members")
@@ -68,14 +68,14 @@ export async function getPartnerPublicKey(spaceId: string, ownUserId: string): P
   const freshness = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
   const { data: device, error: keyError } = await supabase
     .from("device_crypto_keys")
-    .select("public_key,last_seen_at")
+    .select("device_id,public_key,last_seen_at")
     .eq("user_id", partner.user_id)
     .gt("last_seen_at", freshness)
     .order("last_seen_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (keyError) throw keyError;
-  return device?.public_key ? { userId: partner.user_id, publicKeyHex: device.public_key } : null;
+  return device?.public_key ? { userId: partner.user_id, deviceId: device.device_id, publicKeyHex: device.public_key } : null;
 }
 
 
