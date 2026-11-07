@@ -7,9 +7,9 @@ Repository: [vedansh-op/Routine-manager-](https://github.com/vedansh-op/Routine-
 ## Current implementation
 
 - Expo SDK 54 / React Native / TypeScript app with Home, Tasks, Habits, Insights, Account, Shared Space, Our Time, Shared Calendar, and Private Photo Memories screens.
-- Supabase email/password authentication and code-only shared-space invitations (two members maximum).
+- Supabase email/password authentication and code-only shared-space invitations (two members maximum); owners can replace an unused or expired invite before the second member joins.
 - Local-first task, habit, and completion history, encrypted at rest with XChaCha20-Poly1305; Supabase receives weekly aggregate reports only.
-- Shared activities stored as UTC instants and displayed in each device's local timezone.
+- Shared activities can be scheduled with the phone's native date/time picker, stored as UTC instants, and displayed in each device's local timezone; the creator sees the Portugal-time conversion before saving.
 - Private photo memories: device-specific X25519 keys in Android SecureStore, ephemeral key agreement + HKDF-SHA256, XChaCha20-Poly1305 photo encryption, encrypted app-private local vault, recipient acknowledgement, and server-side expiry of pending cloud deliveries after 72 hours without a successful recipient heartbeat.
 - GitHub Actions workflow builds an installable Android debug APK.
 
