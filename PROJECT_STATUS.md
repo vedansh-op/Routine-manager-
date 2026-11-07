@@ -51,10 +51,17 @@ Never put the Supabase service-role key in the Android app, APK, or Git reposito
 - First-contact fingerprint verification and write-once local pinning are implemented, but must be tested on both devices. A reviewed key-rotation/recovery flow is still missing.
 
 ## Android build status
-- [ ] Confirm the newest GitHub Actions run completes successfully.
-- [ ] Confirm a downloadable `ONE-OS-debug-apk` artifact belongs to that same successful run.
+- [x] Confirm GitHub Actions run #68 completes successfully (commit `c565115494c9b422c0a65b3b896c6af8e9a22303`).
+- [x] Confirm downloadable `ONE-OS-debug-apk` artifact `13591414729` belongs to that same successful run (about 44.9 MB; expires 2026-11-21).
 - [ ] Install and test on a physical Android device.
 - [ ] Test photo send/receive, failed uploads, duplicate acknowledgement, tamper rejection, and 72-hour expiry using both accounts/devices.
 - [ ] Configure production signing and publish a release APK.
 
 A successful TypeScript check or debug APK build is not proof that Supabase is configured or that two-device features work end to end.
+
+
+## Latest verified APK
+- GitHub Actions run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42416893979
+- Artifact: `ONE-OS-debug-apk` (artifact ID `13591414729`, 44.9 MB).
+- Build, TypeScript validation, native prebuild, APK compile, and artifact upload all succeeded.
+- This does not replace physical Android testing or Supabase deployment/two-account testing.
