@@ -43,10 +43,11 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   // Presence is server-observed only. An offline device updates this when it next reconnects and foregrounds ONE-OS.
   useEffect(() => {
     if (!userId || !supabase) return;
+    const client = supabase;
     let active = true;
     const heartbeat = async () => {
       if (!active) return;
-      const { error } = await supabase.rpc("touch_my_presence");
+      const { error } = await client.rpc("touch_my_presence");
       if (error && active) console.info("ONE-OS presence sync unavailable:", error.message);
     };
     void heartbeat();
