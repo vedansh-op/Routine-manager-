@@ -38,13 +38,13 @@ The supplied Stitch bundle was inspected locally. It contains HTML prototypes, s
 - Configure EAS credentials/build and publish a tested APK.
 
 ## APK status
-- [x] Installable Android debug APK successfully built in GitHub Actions run #51 (artifact: `ONE-OS-debug-apk`, about 44.9 MB ZIP / 126 MB APK).
+- [x] Installable Android debug APK successfully built in GitHub Actions run #53 (artifact: `ONE-OS-debug-apk`, about 44.9 MB ZIP / 126 MB APK).
 - [x] Newer source revision passed TypeScript validation and Expo prebuild in run #54.
 - [ ] Finish run #54 Android Gradle build and verify its APK artifact.
 - [ ] Install on a physical Android device and test login, local encryption, photo send/receive, and server expiry.
 - [ ] Configure production signing and publish a release APK.
 
-The run #51 APK is an interim debug build; it predates the subsequent timestamp, heartbeat, and key-creation-race refinements.
+The run #53 APK includes the date-based photo calendar, device-targeted delivery, capture-time handling, and foreground heartbeat. It predates only the final secure-storage key-creation race fix being rebuilt in run #54.
 
 
 ## Phase 3 — Local-first data and timezone foundation
