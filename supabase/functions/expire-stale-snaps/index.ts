@@ -24,6 +24,7 @@ Deno.serve(async (request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+  const abandonedUploadCutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const { data: inactive, error: presenceError } = await admin
     .from("member_presence")
     .select("space_id,user_id")
@@ -34,41 +35,63 @@ Deno.serve(async (request) => {
   let deletedDeliveries = 0;
   let deletedObjects = 0;
   const failures: string[] = [];
+  const processed = new Set<string>();
 
+  async function purge(delivery: { id: string; object_path: string | null }, reason: string) {
+    if (processed.has(delivery.id)) return;
+    processed.add(delivery.id);
+
+    if (delivery.object_path) {
+      const { error: removeError } = await admin.storage
+        .from("oneos-private-snaps")
+        .remove([delivery.object_path]);
+      const isMissingObject = removeError && String(removeError.statusCode) === "404";
+      if (removeError && !isMissingObject) {
+        failures.push(`Storage cleanup failed for ${delivery.id} (${reason}): ${removeError.message}`);
+        return;
+      }
+      if (!removeError) deletedObjects++;
+    }
+
+    const { error: deleteError } = await admin
+      .from("snap_deliveries")
+      .delete()
+      .eq("id", delivery.id);
+    if (deleteError) failures.push(`Metadata cleanup failed for ${delivery.id} (${reason}): ${deleteError.message}`);
+    else deletedDeliveries++;
+  }
+
+  // A recipient who has been offline for 72 hours loses only their pending deliveries.
   for (const member of inactive ?? []) {
     const { data: deliveries, error: deliveryError } = await admin
       .from("snap_deliveries")
       .select("id,object_path")
       .eq("space_id", member.space_id)
       .eq("recipient_id", member.user_id)
-      .in("status", ["uploading", "pending"]);
+      .eq("status", "pending");
 
     if (deliveryError) {
       failures.push(deliveryError.message);
       continue;
     }
+    for (const delivery of deliveries ?? []) await purge(delivery, "recipient inactive for 72 hours");
+  }
 
-    for (const delivery of deliveries ?? []) {
-      if (delivery.object_path) {
-        const { error: removeError } = await admin.storage
-          .from("oneos-private-snaps")
-          .remove([delivery.object_path]);
-        const isMissingObject = removeError && String(removeError.statusCode) === "404";
-        if (removeError && !isMissingObject) {
-          failures.push(`Storage cleanup failed for ${delivery.id}: ${removeError.message}`);
-          continue;
-        }
-        if (!removeError) deletedObjects++;
-      }
+  // An unfinished upload is an orphan candidate after one hour, regardless of recipient presence.
+  const { data: abandonedUploads, error: uploadError } = await admin
+    .from("snap_deliveries")
+    .select("id,object_path")
+    .eq("status", "uploading")
+    .lt("created_at", abandonedUploadCutoff);
 
-      const { error: deleteError } = await admin.from("snap_deliveries").delete().eq("id", delivery.id);
-      if (deleteError) failures.push(`Metadata cleanup failed for ${delivery.id}: ${deleteError.message}`);
-      else deletedDeliveries++;
-    }
+  if (uploadError) failures.push(uploadError.message);
+  else {
+    for (const delivery of abandonedUploads ?? []) await purge(delivery, "upload unfinished for one hour");
   }
 
   return Response.json({
-    cutoff,
+    inactiveCutoff: cutoff,
+    abandonedUploadCutoff,
     inactiveMembersChecked: inactive?.length ?? 0,
     deletedObjects,
     deletedDeliveries,
