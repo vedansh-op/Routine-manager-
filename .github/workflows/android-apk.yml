@@ -12,6 +12,10 @@ on:
       - "tsconfig.json"
       - ".github/workflows/android-apk.yml"
 
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
