@@ -34,3 +34,20 @@ See [PROJECT_STATUS.md](PROJECT_STATUS.md) and [docs/ARCHITECTURE.md](docs/ARCHI
 ## Android APK
 
 An APK is not available yet. It will be generated only after the app is implemented and a build succeeds. The intended free build path is Expo + EAS Build's available free allowance, with the resulting APK attached to a GitHub Release.
+
+
+## Phase 1 — Authentication
+
+The app now includes Supabase email/password sign-up and sign-in, persisted sessions, email confirmation, password-reset links, password recovery, and sign-out. Each account receives a private profile row protected by row-level security.
+
+### One-time Supabase setup
+
+1. Create a Supabase project.
+2. In the Supabase SQL Editor, run `supabase/migrations/202611070001_profiles.sql`.
+3. Copy `.env.example` to `.env` and fill in the Project URL and publishable/anon key from Supabase project settings.
+4. In Supabase Authentication → URL Configuration, add `oneos://auth` as an allowed redirect URL.
+5. Rebuild the Android app after setting the environment variables.
+
+Only the Supabase publishable/anon key belongs in the app. Never use the service-role key in an APK. The database migration enables RLS and limits each user to their own profile.
+
+**Build note:** Phase 1 source code is committed, but it is not end-to-end verified until the Supabase project is configured and a real Android sign-up/sign-in/reset flow is tested.
