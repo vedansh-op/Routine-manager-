@@ -197,6 +197,55 @@ begin
 end;
 $;
 
+create or replace function public.rotate_shared_invite()
+returns table(invite_code text, expires_at timestamptz)
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  v_user uuid := auth.uid();
+  v_space uuid;
+  v_member_count integer;
+  v_code text;
+  v_expiry timestamptz := now() + interval '7 days';
+begin
+  if v_user is null then raise exception 'Authentication required'; end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(v_user::text, 0));
+
+  select m.space_id into v_space
+  from public.space_members m
+  join public.spaces s on s.id = m.space_id
+  where m.user_id = v_user
+    and m.role = 'owner'
+    and s.space_type = 'shared'
+  for update of m;
+
+  if v_space is null then
+    raise exception 'Only the shared-space owner can renew its invitation';
+  end if;
+
+  select count(*) into v_member_count
+  from public.space_members m
+  where m.space_id = v_space;
+
+  if v_member_count >= 2 then
+    raise exception 'This shared space already has two members';
+  end if;
+
+  -- Invalidate any older unused invite before issuing a replacement.
+  update public.space_invitations
+  set expires_at = now()
+  where space_id = v_space and accepted_at is null;
+
+  v_code := upper(substr(encode(extensions.gen_random_bytes(8), 'hex'), 1, 12));
+  insert into public.space_invitations(space_id, code_hash, created_by, expires_at)
+  values (v_space, encode(extensions.digest(v_code, 'sha256'), 'hex'), v_user, v_expiry);
+
+  return query select v_code, v_expiry;
+end;$$;
+
 revoke all on function public.create_shared_space(text) from public;
 revoke all on function public.join_shared_space(text) from public;
 revoke all on function public.rotate_shared_invite() from public;
