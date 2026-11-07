@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
+import { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/auth/AuthProvider";
-import { formatInTimeZone, getDateKeyInTimeZone, getDeviceTimeZone } from "@/lib/time";
+import {
+  DEFAULT_PARTNER_TIME_ZONE,
+  formatInTimeZone,
+  getDateKeyInTimeZone,
+  getDeviceTimeZone,
+  getTimeZoneOffsetLabel,
+} from "@/lib/time";
 
 type Activity = {
   id: string;
@@ -34,6 +41,7 @@ export default function ActivityCalendarScreen() {
   const now = new Date();
   const [month, setMonth] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(() => getDateKeyInTimeZone(now, zone));
+  const [selectedInstant, setSelectedInstant] = useState(() => new Date());
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [title, setTitle] = useState("");
@@ -66,6 +74,45 @@ export default function ActivityCalendarScreen() {
   const activityDates = useMemo(() => new Set(activities.map(item => getDateKeyInTimeZone(new Date(item.starts_at), zone))), [activities, zone]);
   const selected = activities.filter(item => getDateKeyInTimeZone(new Date(item.starts_at), zone) === selectedDate);
 
+  function chooseCalendarDate(key: string) {
+    setSelectedDate(key);
+    const [year, monthNumber, day] = key.split("-").map(Number);
+    setSelectedInstant(current => new Date(
+      year, monthNumber - 1, day, current.getHours(), current.getMinutes(), 0, 0,
+    ));
+  }
+
+  function openEventDatePicker() {
+    DateTimePickerAndroid.open({
+      value: selectedInstant,
+      mode: "date",
+      onChange: (event, pickedDate) => {
+        if (event.type !== "set" || !pickedDate) return;
+        const next = new Date(
+          pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate(),
+          selectedInstant.getHours(), selectedInstant.getMinutes(), 0, 0,
+        );
+        setSelectedInstant(next);
+        setSelectedDate(getDateKeyInTimeZone(next, zone));
+        setMonth(new Date(next.getFullYear(), next.getMonth(), 1));
+      },
+    });
+  }
+
+  function openEventTimePicker() {
+    DateTimePickerAndroid.open({
+      value: selectedInstant,
+      mode: "time",
+      is24Hour: true,
+      onChange: (event, pickedTime) => {
+        if (event.type !== "set" || !pickedTime) return;
+        const next = new Date(selectedInstant);
+        next.setHours(pickedTime.getHours(), pickedTime.getMinutes(), 0, 0);
+        setSelectedInstant(next);
+      },
+    });
+  }
+
   async function addMoment() {
     const value = title.trim();
     if (!value) return Alert.alert("Add a title", "Give this shared activity a short name.");
@@ -77,7 +124,7 @@ export default function ActivityCalendarScreen() {
         created_by: user.id,
         title: value,
         note: note.trim() || null,
-        starts_at: new Date().toISOString(),
+        starts_at: selectedInstant.toISOString(),
         timezone: zone,
       });
       if (error) throw error;
@@ -116,7 +163,7 @@ export default function ActivityCalendarScreen() {
             const key = dateKey(month.getFullYear(), month.getMonth(), day);
             const active = key === selectedDate;
             const hasItems = activityDates.has(key);
-            return <Pressable key={key} onPress={() => setSelectedDate(key)} style={[s.dayCell, active && s.selectedDay]}>
+            return <Pressable key={key} onPress={() => chooseCalendarDate(key)} style={[s.dayCell, active && s.selectedDay]}>
               <Text style={[s.dayText, active && s.selectedDayText]}>{day}</Text>
               {hasItems ? <View style={[s.dot, active && s.selectedDot]} /> : null}
             </Pressable>;
@@ -137,7 +184,23 @@ export default function ActivityCalendarScreen() {
       </View>
       <View style={s.card}>
         <Text style={s.cardTitle}>Add a shared moment</Text>
-        <Text style={s.muted}>This creates a shared activity at the current moment. Your partner will see it after syncing.</Text>
+        <Text style={s.muted}>Choose a date and time in your phone's timezone. ONE-OS stores one UTC instant and converts it for your partner automatically.</Text>
+        <View style={s.schedulePanel}>
+          <View style={s.scheduleRow}>
+            <Pressable style={s.scheduleButton} onPress={openEventDatePicker}>
+              <Text style={s.scheduleLabel}>YOUR DATE</Text>
+              <Text style={s.scheduleValue}>{formatInTimeZone(selectedInstant, zone, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</Text>
+              <Text style={s.scheduleHint}>Change date</Text>
+            </Pressable>
+            <Pressable style={s.scheduleButton} onPress={openEventTimePicker}>
+              <Text style={s.scheduleLabel}>YOUR TIME</Text>
+              <Text style={s.scheduleValue}>{formatInTimeZone(selectedInstant, zone, { hour: "2-digit", minute: "2-digit", hour12: true })}</Text>
+              <Text style={s.scheduleHint}>Change time</Text>
+            </Pressable>
+          </View>
+          <Text style={s.scheduleZone}>Saved as UTC · {zone} ({getTimeZoneOffsetLabel(selectedInstant, zone)})</Text>
+          <Text style={s.partnerPreview}>Portugal sees {formatInTimeZone(selectedInstant, DEFAULT_PARTNER_TIME_ZONE, { weekday: "short", day: "numeric", month: "short" })} at {formatInTimeZone(selectedInstant, DEFAULT_PARTNER_TIME_ZONE, { hour: "2-digit", minute: "2-digit", hour12: true })} · {getTimeZoneOffsetLabel(selectedInstant, DEFAULT_PARTNER_TIME_ZONE)}</Text>
+        </View>
         <TextInput value={title} onChangeText={setTitle} placeholder="What happened?" placeholderTextColor="#777d8c" maxLength={120} style={s.input} />
         <TextInput value={note} onChangeText={setNote} placeholder="A little detail (optional)" placeholderTextColor="#777d8c" multiline style={[s.input, s.noteInput]} />
         <Pressable disabled={saving || loading} onPress={() => void addMoment()} style={[s.primary, (saving || loading) && s.disabled]}>
@@ -161,6 +224,15 @@ const s = StyleSheet.create({
   cardTitle:{color:"#f4f2ff",fontSize:17,fontWeight:"700",marginBottom:10},muted:{color:"#9699a5",fontSize:12,lineHeight:19},event:{flexDirection:"row",gap:11,paddingVertical:10,borderTopWidth:1,borderTopColor:"#2a2e38"},
   eventDot:{width:8,height:8,borderRadius:5,backgroundColor:"#b7adff",marginTop:5},eventTitle:{color:"#f4f2ff",fontSize:14,fontWeight:"700"},eventTime:{color:"#a99eff",fontSize:11,marginTop:4},
   input:{backgroundColor:"#101216",borderWidth:1,borderColor:"#3b3e4a",borderRadius:12,padding:14,color:"#f4f2ff",marginTop:13,fontSize:14},
-  noteInput:{minHeight:68,textAlignVertical:"top"},primary:{backgroundColor:"#b7adff",padding:15,borderRadius:12,alignItems:"center",marginTop:14},primaryText:{color:"#101216",fontWeight:"800"},
+  noteInput:{minHeight:68,textAlignVertical:"top"},
+  schedulePanel:{backgroundColor:"#101216",borderRadius:13,padding:12,marginTop:13},
+  scheduleRow:{flexDirection:"row",gap:9},
+  scheduleButton:{flex:1,backgroundColor:"#222532",borderWidth:1,borderColor:"#39364d",borderRadius:11,padding:12},
+  scheduleLabel:{color:"#9699a5",fontSize:9,letterSpacing:1,fontWeight:"800"},
+  scheduleValue:{color:"#f4f2ff",fontSize:14,fontWeight:"700",marginTop:7},
+  scheduleHint:{color:"#a99eff",fontSize:10,marginTop:5},
+  scheduleZone:{color:"#777d8c",fontSize:10,marginTop:11},
+  partnerPreview:{color:"#c7bfff",fontSize:11,lineHeight:17,marginTop:6},
+  primary:{backgroundColor:"#b7adff",padding:15,borderRadius:12,alignItems:"center",marginTop:14},primaryText:{color:"#101216",fontWeight:"800"},
   disabled:{opacity:0.5},footer:{color:"#666c79",fontSize:10,lineHeight:17,textAlign:"center",marginTop:20},
 });
