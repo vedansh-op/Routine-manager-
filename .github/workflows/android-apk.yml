@@ -42,17 +42,42 @@ jobs:
       - name: Generate native Android project
         run: npx expo prebuild --platform android --non-interactive
 
+      # React Native normally skips JavaScript bundling for the debug variant.
+      # Make this APK self-contained so it launches without a Metro server.
+      - name: Enable JavaScript bundling in the standalone debug variant
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = "android/app/build.gradle";
+          let gradle = fs.readFileSync(path, "utf8");
+          if (!/react\\s*\\{/.test(gradle)) {
+            throw new Error("Could not find the React Native Gradle configuration block.");
+          }
+          if (!/react\\s*\\{\\s*debuggableVariants\\s*=\\s*\\[\\s*\\]/.test(gradle)) {
+            gradle = gradle.replace(/react\\s*\\{/, match => match + "\\n    debuggableVariants = []");
+          }
+          fs.writeFileSync(path, gradle);
+          console.log("Configured debug APK to include its JavaScript bundle.");
+          NODE
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Build APK
+      - name: Build standalone debug APK
         working-directory: android
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
+
+      - name: Verify embedded JavaScript bundle
+        working-directory: android
+        run: |
+          bundle_path="$(find app/build -type f -name 'index.android.bundle' -size +0c -print -quit)"
+          test -n "$bundle_path"
+          echo "Verified embedded JavaScript bundle: $bundle_path"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
