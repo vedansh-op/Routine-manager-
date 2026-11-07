@@ -9,7 +9,15 @@
     "newArchEnabled": true,
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ONE-OS uses selected photos only when you choose to share a private memory.",
+          "cameraPermission": "ONE-OS uses the camera only when you choose to capture a private memory.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "android": {
       "package": "com.vedansh.oneos",
