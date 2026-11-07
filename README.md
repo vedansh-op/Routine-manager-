@@ -96,3 +96,14 @@ The calendar is an activity foundation, not yet the photo-memory implementation.
 The personal task/habit/completion store now encrypts its JSON payload before writing to AsyncStorage, using XChaCha20-Poly1305 and a random per-account 256-bit key stored with Expo SecureStore. The existing plaintext store is migrated on first account load. If decryption fails, writes are paused and the app displays a warning rather than overwriting the stored ciphertext.
 
 This is an implementation awaiting CI and physical-device validation. It protects data at rest in the app's private storage, not a rooted/compromised device, and it does not create a cloud backup of detailed personal history.
+
+
+## Phase 6 — Private photo memories
+
+The Private photo memories screen is now part of the app. It uses X25519 ephemeral key agreement, HKDF-SHA256, and XChaCha20-Poly1305 to encrypt a snap before it is uploaded. The recipient's private key is kept in Android SecureStore; the server stores only ciphertext and an encrypted one-time file-key envelope. Each recipient saves the decrypted image encrypted in their own app-private vault before the app requests cloud acknowledgement.
+
+The Supabase migration `202611070005_encrypted_snap_delivery.sql` creates the public-key registry, server-observed presence, delivery metadata, and a private Storage bucket. Apply migrations 001–005 in order. Deploy `ack-snap` and `expire-stale-snaps` from `supabase/functions/`, set the server-only `ONEOS_CRON_SECRET` for the expiry function, then configure the 15-minute schedule using `supabase/cron/schedule_snap_expiry.sql`. The scheduled SQL requires pg_cron, pg_net, and Vault. Do not put a service-role key into the app or GitHub source.
+
+The 72-hour rule uses the server's last successful authenticated heartbeat. Opening ONE-OS while offline cannot reset that timer until the phone reconnects. Expiry removes only pending cloud photo objects and their delivery records; it does not remove account data or photos already saved locally.
+
+**Not yet end-to-end verified:** Supabase migrations/functions have not been deployed to the live project, and two-device camera/send/receive/acknowledgement/expiry tests are still required. A device reinstall loses its SecureStore private photo key and its local vault; there is no key-recovery or encrypted cloud backup yet. Do not treat the app as a production secure messenger until these risks and tests are addressed.
