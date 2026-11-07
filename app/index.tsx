@@ -19,3 +19,5 @@ export default function Home() {
   </ScrollView>;
 }
 const s = StyleSheet.create({ page:{flex:1,backgroundColor:"#101216"},body:{padding:24,paddingTop:58},eyebrow:{color:"#9b8cff",fontSize:10,letterSpacing:2,fontWeight:"700"},heading:{color:"#f4f2ff",fontSize:42,fontWeight:"700",lineHeight:47,marginTop:16},date:{color:"#9699a5",marginTop:12,fontSize:14},grid:{flexDirection:"row",gap:12,marginTop:30},card:{flex:1,backgroundColor:"#1a1d24",borderColor:"#2a2e38",borderWidth:1,borderRadius:18,padding:16},muted:{color:"#9699a5",fontSize:10,letterSpacing:1},metric:{color:"#f4f2ff",fontSize:27,fontWeight:"700",marginTop:12},hint:{color:"#777d8c",fontSize:11,marginTop:5},section:{color:"#f4f2ff",fontSize:18,fontWeight:"700",marginTop:34,marginBottom:12},link:{color:"#e2deff",backgroundColor:"#1a1d24",borderRadius:14,padding:18,marginTop:9,overflow:"hidden",fontSize:15},footer:{color:"#666c79",fontSize:11,marginTop:42,textAlign:"center"}});
+
+// Build trigger: Android APK workflow validation.
