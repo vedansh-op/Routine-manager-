@@ -48,7 +48,7 @@ No APK has been built or tested yet. Do not treat the EAS profile as a completed
 - [x] Add an Our Time screen with live local and Europe/Lisbon clocks; Portugal daylight-saving offsets are calculated by the runtime timezone database.
 - [x] Add a weekly_reports table migration: each user owns their summary, and partner access requires explicit sharing plus shared-space membership.
 - [ ] Apply migration 202611070003_weekly_reports.sql in the Supabase SQL Editor.
-- [ ] Implement local weekly-summary generation and upload; the table exists, but no report sync job is wired yet.
+- [x] Add an Insights action to upload aggregate weekly counts, privately or with explicit partner sharing. It sends counts only, never task names or notes.
 - [ ] Replace current AsyncStorage persistence with encrypted app-private storage before describing local records as encrypted.
 - [ ] Implement the shared memories calendar, activity sharing controls, encrypted photo delivery, acknowledgements, and server-side 72-hour expiry.
 - [ ] Configure per-user timezone preferences and reminder scheduling; current Our Time screen detects this device's timezone and uses Europe/Lisbon for the partner.
