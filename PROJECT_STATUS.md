@@ -65,3 +65,14 @@ The weekly_reports table is designed for aggregated summaries only. Do not uploa
 - [ ] Test event creation and visibility using both accounts in different timezones.
 - [ ] Add activity date/time picker (current quick-add records the moment of creation).
 - [ ] Add image capture, client-side encryption, recipient device-key exchange, queued delivery, verified receipt, and server-side 72-hour pending-photo purge.
+
+
+## Phase 5 — Encrypted local personal data (implementation in validation)
+- [x] Add per-account 256-bit data keys stored in Android Keystore through Expo SecureStore.
+- [x] Encrypt local task/habit/completion JSON with XChaCha20-Poly1305 using a fresh 192-bit nonce per write.
+- [x] Migrate the existing plaintext local store to encrypted storage on first successful account load.
+- [x] Pause writes and surface a warning if local ciphertext cannot be decrypted, rather than silently replacing the user's data.
+- [ ] Verify package compatibility and TypeScript/Android build in GitHub Actions.
+- [ ] Test encryption round-trip, legacy migration, account switching, app restart, and key-loss recovery on a physical Android device.
+
+Security boundary: this protects stored app data at rest using a key held by Android secure storage. It does not protect a compromised/rooted device, and it is not yet an encrypted backup. A clean uninstall removes the app's local data; Supabase weekly reports remain separately available.
