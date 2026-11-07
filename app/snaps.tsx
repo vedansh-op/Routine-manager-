@@ -283,7 +283,13 @@ export default function SnapMemoriesScreen() {
       const { error: ackError } = await supabase.functions.invoke("ack-snap", {
         body: { deliveryId: item.id },
       });
-      if (ackError) throw ackError;
+      if (ackError) {
+        // The server removes the delivery row after deleting the cloud object.
+        // If its success response was lost, a retry can legitimately receive 404.
+        // This item came from this recipient's inbox and its local copy is durable.
+        const status = (ackError as { context?: { status?: number } }).context?.status;
+        if (status !== 404) throw ackError;
+      }
       setPending(old => old.filter(snap => snap.id !== item.id));
       setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
       Alert.alert("Memory received", "The photo is now saved encrypted on this phone. The temporary cloud copy and delivery key have been removed.");
