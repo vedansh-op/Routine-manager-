@@ -89,3 +89,10 @@ Not yet complete: weekly report generation/upload, encrypted local database stor
 The shared calendar stores only events explicitly added to the shared space. Each event is stored as a UTC instant and rendered using the viewing member's device timezone. The database migration enforces shared-space membership for reads and creation, and only the creator can edit or delete their event. Apply `202611070004_shared_activity_calendar.sql` after migrations 1–3.
 
 The calendar is an activity foundation, not yet the photo-memory implementation. Photo capture, encryption, private device storage, delivery acknowledgement, and the 72-hour server-side expiry are still pending.
+
+
+## Phase 5 — Encrypted local data
+
+The personal task/habit/completion store now encrypts its JSON payload before writing to AsyncStorage, using XChaCha20-Poly1305 and a random per-account 256-bit key stored with Expo SecureStore. The existing plaintext store is migrated on first account load. If decryption fails, writes are paused and the app displays a warning rather than overwriting the stored ciphertext.
+
+This is an implementation awaiting CI and physical-device validation. It protects data at rest in the app's private storage, not a rooted/compromised device, and it does not create a cloud backup of detailed personal history.
