@@ -100,3 +100,16 @@ Security boundary: this protects stored app data at rest using a key held by And
 - [ ] Consider app uninstall/reinstall behaviour: local memories and device private keys are lost; no recovery service exists.
 
 Privacy boundary: only ciphertext and wrapped key metadata are uploaded. Local photo copies are encrypted at rest in app-private storage. The server cannot decrypt photo content. The 72-hour clock depends on a successful online heartbeat, not the device's offline activity.
+
+
+## Phase 6 — Private encrypted photo-delivery backend foundation
+- [x] Added per-member authenticated heartbeat records for server-observed app sync.
+- [x] Added private photo-delivery metadata with two-member validation, ciphertext size/type limits, recipient-only download policy, and sender-only upload policy.
+- [x] Added acknowledgement RPC; only the intended recipient can mark a pending delivery as received.
+- [x] Added a private Storage bucket; the database stores only object path and an opaque wrapped file-key envelope.
+- [x] Added a Supabase Edge Function that removes pending ciphertext and metadata after 72 hours without a recipient heartbeat.
+- [ ] Implement and review the Android client-side X25519 recipient key registration, per-photo key wrapping, capture, upload, download, local decrypt, and verified-save flow.
+- [ ] Deploy the Edge Function and configure a 15-minute Supabase Cron invocation with a secret header.
+- [ ] Apply migration 202611080001_private_photo_delivery.sql after migrations 001–004 and test with both accounts/devices.
+
+Important: this is backend groundwork, not a completed end-to-end photo feature. Do not upload plaintext photos or reuse the local database encryption key for photo sharing. The Edge Function uses the service-role key only in server-side secrets; never put it in the Android app. The 72-hour timer is based on the last successful authenticated heartbeat the server has observed, not the phone's offline clock. Only pending cloud copies are purged; acknowledged deliveries remain subject to recipient local storage.
