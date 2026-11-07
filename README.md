@@ -38,7 +38,7 @@ In the app, configure only the Supabase Project URL and publishable/anon key as 
 - Private photo bytes are encrypted before upload. Each recipient saves the photo in their own encrypted app-private vault before acknowledgement removes the temporary cloud copy.
 - The 72-hour expiry is based on the server's last successful authenticated heartbeat. Offline app opens cannot reset it.
 - Uninstalling the app removes local history, local photos, and device private keys. There is no key-recovery or encrypted cloud backup yet.
-- Encryption does not protect a rooted or compromised device. Public-key first-contact verification and multi-device recovery still need hardening before treating this as a production secure messenger.
+- First-contact photo-key verification now shows a shared-secret fingerprint and pins the partner's public key locally; both people must compare the same fingerprint over a separate trusted channel. Key changes are blocked. This flow still needs two-device testing and a verified recovery path. Encryption does not protect a rooted or compromised device.
 
 ## Build and validation
 
