@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth/AuthProvider";
+import { getEncryptedItem, setEncryptedItem } from "@/lib/secureLocalStore";
 
 export type Task = { id: string; title: string; notes?: string; dueDate?: string; completed: boolean; createdAt: string };
 export type Habit = { id: string; title: string; createdAt: string; archived: boolean };
@@ -9,14 +10,15 @@ type Store = {
   habits: Habit[];
   completions: string[];
   ready: boolean;
+  storageError: string | null;
   addTask: (title: string) => void;
   toggleTask: (id: string) => void;
   addHabit: (title: string) => void;
   toggleHabitToday: (id: string) => void;
 };
 const LEGACY_KEY = "one-os-v1";
-const keyForUser = (userId: string) => `one-os-v2:${userId}`;
-const migratedKey = (userId: string) => `one-os-v2-migrated:${userId}`;
+const keyForUser = (userId: string) => "one-os-v2:" + userId;
+const migratedKey = (userId: string) => "one-os-v2-migrated:" + userId;
 const StoreContext = createContext<Store | null>(null);
 const today = () => {
   const d = new Date();
@@ -32,10 +34,14 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
+  const [storageUnlocked, setStorageUnlocked] = useState(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setReady(false);
+    setStorageUnlocked(false);
+    setStorageError(null);
     setActiveUserId(userId);
     setTasks([]);
     setHabits([]);
@@ -48,15 +54,14 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const scopedKey = keyForUser(userId);
-        let raw = await AsyncStorage.getItem(scopedKey);
+        let raw = await getEncryptedItem(scopedKey, userId);
         if (!raw) {
-          // One-time migration of the original single-account store to the first signed-in account.
           const alreadyMigrated = await AsyncStorage.getItem(migratedKey(userId));
           if (!alreadyMigrated) {
             const legacy = await AsyncStorage.getItem(LEGACY_KEY);
             if (legacy) {
               raw = legacy;
-              await AsyncStorage.setItem(scopedKey, legacy);
+              await setEncryptedItem(scopedKey, userId, legacy);
               await AsyncStorage.removeItem(LEGACY_KEY);
             }
             await AsyncStorage.setItem(migratedKey(userId), "1");
@@ -69,8 +74,9 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
           setHabits(Array.isArray(data.habits) ? data.habits : []);
           setCompletions(Array.isArray(data.completions) ? data.completions : []);
         }
-      } catch {
-        // Keep the account's local workspace empty if stored data is unreadable.
+        if (!cancelled) setStorageUnlocked(true);
+      } catch (error) {
+        if (!cancelled) setStorageError(error instanceof Error ? error.message : "Could not unlock this account's local data.");
       } finally {
         if (!cancelled) setReady(true);
       }
@@ -80,15 +86,18 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   }, [userId]);
 
   useEffect(() => {
-    if (!ready || !userId || activeUserId !== userId) return;
-    AsyncStorage.setItem(keyForUser(userId), JSON.stringify({ tasks, habits, completions })).catch(() => {});
-  }, [tasks, habits, completions, ready, userId, activeUserId]);
+    if (!ready || !storageUnlocked || !userId || activeUserId !== userId) return;
+    setEncryptedItem(keyForUser(userId), userId, JSON.stringify({ tasks, habits, completions })).catch(error => {
+      setStorageError(error instanceof Error ? error.message : "Could not encrypt local data.");
+      setStorageUnlocked(false);
+    });
+  }, [tasks, habits, completions, ready, storageUnlocked, userId, activeUserId]);
 
   const addTask = useCallback((title: string) => {
     const value = title.trim();
     if (value) setTasks(old => [{ id: uid(), title: value, completed: false, createdAt: new Date().toISOString() }, ...old]);
   }, []);
-  const toggleTask = useCallback((id: string) => setTasks(old => old.map(t => t.id === id ? { ...t, completed: !t.completed } : t)), []);
+  const toggleTask = useCallback((id: string) => setTasks(old => old.map(t => t.id === id ? { ...t, completed: !t.completed } : t), []);
   const addHabit = useCallback((title: string) => {
     const value = title.trim();
     if (value) setHabits(old => [{ id: uid(), title: value, createdAt: new Date().toISOString(), archived: false }, ...old]);
@@ -98,7 +107,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setCompletions(old => old.includes(key) ? old.filter(x => x !== key) : [...old, key]);
   }, []);
 
-  const value = useMemo(() => ({ tasks, habits, completions, ready, addTask, toggleTask, addHabit, toggleHabitToday }), [tasks, habits, completions, ready, addTask, toggleTask, addHabit, toggleHabitToday]);
+  const value = useMemo(() => ({ tasks, habits, completions, ready, storageError, addTask, toggleTask, addHabit, toggleHabitToday }), [tasks, habits, completions, ready, storageError, addTask, toggleTask, addHabit, toggleHabitToday]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 export function useAppStore() {
