@@ -55,3 +55,13 @@ No APK has been built or tested yet. Do not treat the EAS profile as a completed
 
 ## Important data-retention boundary
 The weekly_reports table is designed for aggregated summaries only. Do not upload raw task titles, notes, daily completion rows, or full personal history. Uninstalling the app will remove device-local detail; only weekly reports and other explicitly cloud-backed records can be restored after reinstall.
+
+
+## Phase 4 — Shared activity calendar
+- [x] Add shared_activities table with member-only read access and creator-only edit/delete.
+- [x] Add a calendar screen with monthly navigation, activity-day markers, selected-day details, and add-shared-moment flow.
+- [x] Store activity instants as UTC and render the calendar in each device's local IANA timezone.
+- [ ] Apply migration 202611070004_shared_activity_calendar.sql in Supabase SQL Editor.
+- [ ] Test event creation and visibility using both accounts in different timezones.
+- [ ] Add activity date/time picker (current quick-add records the moment of creation).
+- [ ] Add image capture, client-side encryption, recipient device-key exchange, queued delivery, verified receipt, and server-side 72-hour pending-photo purge.
