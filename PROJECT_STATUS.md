@@ -19,6 +19,7 @@
 - [x] Photo capture/library picker, encrypted send, inbox, recipient decrypt/save, encrypted local photo vault, and date-based photo calendar.
 - [x] Per-device X25519 keys stored in SecureStore; public keys are registered in Supabase.
 - [x] Server-observed presence heartbeat and photo acknowledgement/expiry Edge Functions.
+- [x] First-contact partner-key verification using a shared X25519 fingerprint compared out-of-band and a write-once local key pin.
 - [x] GitHub Actions Android debug APK workflow.
 
 ## Supabase deployment checklist
@@ -47,7 +48,7 @@ Never put the Supabase service-role key in the Android app, APK, or Git reposito
 - Photo ciphertext is uploaded; the recipient decrypts and stores it in their own encrypted app-private vault before cloud acknowledgement.
 - The server expires only pending cloud photos when the recipient has had no successful authenticated heartbeat for 72 hours. Offline app opens do not reset the server timer.
 - App uninstall removes local detailed history, local photo files, and device private keys. There is no recovery mechanism for those keys yet.
-- Current per-device public-key lookup needs first-contact fingerprint verification and a reviewed key-rotation/recovery flow before production security claims.
+- First-contact fingerprint verification and write-once local pinning are implemented, but must be tested on both devices. A reviewed key-rotation/recovery flow is still missing.
 
 ## Android build status
 - [ ] Confirm the newest GitHub Actions run completes successfully.
