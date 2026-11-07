@@ -19,17 +19,15 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-
   const { data: stale, error } = await supabase
     .from("photo_deliveries")
     .select("id, object_path, recipient_id, space_id")
     .eq("status", "pending")
-    .lt("created_at", cutoff)
     .limit(500);
 
   if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
 
+  const cutoffMs = Date.now() - 72 * 60 * 60 * 1000;
   let expired = 0;
   const failures: string[] = [];
   for (const delivery of stale ?? []) {
@@ -42,7 +40,7 @@ Deno.serve(async (req) => {
 
     if (presenceError) { failures.push(delivery.id); continue; }
     const lastSeen = presence?.last_seen_at ? Date.parse(presence.last_seen_at) : 0;
-    if (lastSeen > Date.now() - 72 * 60 * 60 * 1000) continue;
+    if (lastSeen > cutoffMs) continue;
 
     const { error: removeError } = await supabase.storage
       .from("oneos-private-snaps")
