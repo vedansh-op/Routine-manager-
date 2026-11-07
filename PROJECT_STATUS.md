@@ -11,11 +11,11 @@
 ### Core app
 - [x] Home, Tasks, Habits, Insights, Account, Shared Space, Our Time, Shared Calendar, and Private Photo Memories screens.
 - [x] Email/password authentication, persisted sessions, password recovery, and private profiles.
-- [x] Two-member shared space with one-time, seven-day invitation code.
+- [x] Two-member shared space with one-time, seven-day invitation code, owner-only renewal, and per-account transaction locking for concurrent membership changes.
 - [x] User-scoped local tasks, habits, and completions.
 - [x] Encrypted local personal data using XChaCha20-Poly1305 and per-account keys held in Expo SecureStore.
 - [x] Weekly aggregate reports; raw task titles, notes, and daily history are not uploaded.
-- [x] Shared activity calendar storing UTC instants and rendering in each viewer's local timezone.
+- [x] Shared activity calendar with native date/time selection, UTC storage, per-viewer timezone rendering, and a Portugal-time scheduling preview.
 - [x] Photo capture/library picker, encrypted send, inbox, recipient decrypt/save, encrypted local photo vault, and date-based photo calendar.
 - [x] Per-device X25519 keys stored in SecureStore; public keys are registered in Supabase.
 - [x] Server-observed presence heartbeat and photo acknowledgement/expiry Edge Functions.
