@@ -4,6 +4,8 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { AppStoreProvider } from "@/store/AppStore";
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
+import { supabase } from "@/lib/supabase";
+import { registerMyPhotoKey } from "@/lib/photoDelivery";
 
 function SessionGate() {
   const { configured, loading, session, recovery } = useAuth();
@@ -21,11 +23,11 @@ function SessionGate() {
   // This is the server-observed signal used by the 72-hour pending-snap expiry worker.
   useEffect(() => {
     const userId = session?.user.id;
-    if (!configured || !userId || !supabase) return;
+    const client = supabase;
+    if (!configured || !userId || !client) return;
     let cancelled = false;
     const heartbeat = async () => {
-      const client = supabase;
-      if (!client || cancelled) return;
+      if (cancelled) return;
       const { data } = await client.from("space_members")
         .select("space_id").eq("user_id", userId).limit(1).maybeSingle();
       if (!cancelled && data?.space_id) {
