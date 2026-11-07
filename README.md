@@ -71,3 +71,14 @@ After applying the Phase 1 migration, open Supabase → SQL Editor and run the c
 Then rebuild the app with the Supabase Project URL and publishable/anon key configured. Test creation with one account and code redemption with a second account.
 
 The app currently has the Create space and Join with a code screen. Shared task/habit selection and realtime shared-data sync are later phases; connecting accounts does not yet make all personal data visible to the other person.
+
+
+## Phase 3 — Local-first data and timezone foundation
+
+ONE-OS is being built local-first: detailed personal tasks, habits, and daily history belong on each signed-in user's device. The local store is now scoped by Supabase user ID to prevent two accounts on the same phone from seeing the same records. The original unscoped store is migrated once to the first account that signs in.
+
+The 202611070003_weekly_reports.sql migration adds a small cloud table for aggregated weekly summaries. Reports are private by default; partner reads require the owner to enable sharing and both accounts to belong to the same shared space. The migration does not create or upload daily activity records.
+
+The Our Time screen displays the current device timezone beside mainland Portugal (Europe/Lisbon). It uses IANA timezone rules, so Portugal's daylight-saving offset changes are handled automatically. Shared event timestamps should be stored as UTC instants and formatted separately for each member.
+
+Not yet complete: weekly report generation/upload, encrypted local database storage, calendar/photo delivery, 72-hour server cleanup, and two-device testing. Current task/habit persistence still uses AsyncStorage and is not yet encrypted. Apply migrations 1, 2, and 3 in order before testing the full cloud features.
