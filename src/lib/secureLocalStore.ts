@@ -74,3 +74,23 @@ export async function setEncryptedItem(storageKey: string, userId: string, value
     if (writeQueues.get(storageKey) === next) writeQueues.delete(storageKey);
   }
 }
+
+
+/** Encrypt binary photo bytes with the same per-account key held in SecureStore. */
+export async function encryptLocalBytes(userId: string, plaintext: Uint8Array): Promise<Uint8Array> {
+  const key = await getUserKey(userId);
+  const nonce = getRandomBytes(24);
+  const ciphertext = xchacha20poly1305(key, nonce).encrypt(plaintext);
+  const packed = new Uint8Array(nonce.length + ciphertext.length);
+  packed.set(nonce, 0);
+  packed.set(ciphertext, nonce.length);
+  return packed;
+}
+
+export async function decryptLocalBytes(userId: string, packed: Uint8Array): Promise<Uint8Array> {
+  if (packed.length < 40) throw new Error("The saved photo file is incomplete.");
+  const nonce = packed.slice(0, 24);
+  const ciphertext = packed.slice(24);
+  const key = await getUserKey(userId);
+  return xchacha20poly1305(key, nonce).decrypt(ciphertext);
+}
