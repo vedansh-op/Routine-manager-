@@ -74,6 +74,11 @@ export default function SharedSpaceScreen() {
       <Text style={s.spaceName}>{membership.spaces?.name ?? "Our shared space"}</Text>
       <Text style={s.copy}>You're connected as {membership.role}. Shared features will appear here as they are enabled.</Text>
       <Text style={s.meta}>Space ID</Text><Text selectable style={s.id}>{membership.space_id}</Text>
+      {!!generatedCode && <View style={s.codePanel}>
+        <Text style={s.label}>YOUR INVITATION CODE</Text>
+        <Text selectable style={s.code}>{generatedCode}</Text>
+        <Text style={s.copy}>Copy this code now and send it privately. It can be used once and expires {expiresAt ? new Date(expiresAt).toLocaleString() : "in 7 days"}.</Text>
+      </View>}
     </View> : <>
       <View style={s.card}>
         <Text style={s.cardTitle}>Create a shared space</Text>
