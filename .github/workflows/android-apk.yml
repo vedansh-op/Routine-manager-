@@ -50,11 +50,11 @@ jobs:
           const fs = require("node:fs");
           const path = "android/app/build.gradle";
           let gradle = fs.readFileSync(path, "utf8");
-          if (!/react\\s*\\{/.test(gradle)) {
+          if (!/react\s*\{/.test(gradle)) {
             throw new Error("Could not find the React Native Gradle configuration block.");
           }
-          if (!/react\\s*\\{\\s*debuggableVariants\\s*=\\s*\\[\\s*\\]/.test(gradle)) {
-            gradle = gradle.replace(/react\\s*\\{/, match => match + "\\n    debuggableVariants = []");
+          if (!/react\s*\{\s*debuggableVariants\s*=\s*\[\s*\]/.test(gradle)) {
+            gradle = gradle.replace(/react\s*\{/, match => match + "\n    debuggableVariants = []");
           }
           fs.writeFileSync(path, gradle);
           console.log("Configured debug APK to include its JavaScript bundle.");
