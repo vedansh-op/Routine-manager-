@@ -1,0 +1,342 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator, Alert, AppState, Image, Modal, Pressable,
+  ScrollView, StyleSheet, Text, View,
+} from "react-native";
+import { useRouter } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
+import { File } from "expo-file-system";
+import { useAuth } from "@/auth/AuthProvider";
+import { supabase } from "@/lib/supabase";
+import { DeviceCryptoKey, ensureDeviceCryptoKey, getPartnerPublicKey } from "@/lib/deviceCrypto";
+import { decryptSnap, encryptSnap } from "@/lib/snapCrypto";
+import {
+  LocalSnap, bytesToBase64, getLocalSnaps, readLocalSnap, saveLocalSnap,
+} from "@/lib/snapVault";
+
+type PendingSnap = {
+  id: string;
+  space_id: string;
+  sender_id: string;
+  recipient_id: string;
+  object_path: string;
+  status: "uploading" | "pending" | "received";
+  ephemeral_public_key: string;
+  wrap_salt: string;
+  wrap_nonce: string;
+  wrapped_file_key: string;
+  content_nonce: string;
+  mime_type: string;
+  file_size_bytes: number;
+  captured_at: string;
+};
+
+const MAX_CIPHERTEXT_BYTES = 20 * 1024 * 1024;
+const MAX_PLAINTEXT_BYTES = MAX_CIPHERTEXT_BYTES - 16;
+
+export default function SnapMemoriesScreen() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const [spaceId, setSpaceId] = useState<string | null>(null);
+  const [partnerId, setPartnerId] = useState<string | null>(null);
+  const [partnerReady, setPartnerReady] = useState(false);
+  const [pending, setPending] = useState<PendingSnap[]>([]);
+  const [localSnaps, setLocalSnaps] = useState<LocalSnap[]>([]);
+  const [deviceKey, setDeviceKey] = useState<DeviceCryptoKey | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [receivingId, setReceivingId] = useState<string | null>(null);
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!user) { setLoading(false); return; }
+    setLoading(true);
+    try {
+      const [key, snaps] = await Promise.all([
+        ensureDeviceCryptoKey(user.id),
+        getLocalSnaps(user.id),
+      ]);
+      setDeviceKey(key);
+      setLocalSnaps(snaps);
+
+      if (!supabase) {
+        setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPending([]);
+        return;
+      }
+      const { data: membership, error: memberError } = await supabase
+        .from("space_members")
+        .select("space_id")
+        .eq("user_id", user.id)
+        .limit(1)
+        .maybeSingle();
+      if (memberError) throw memberError;
+      if (!membership?.space_id) {
+        setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPending([]);
+        return;
+      }
+      setSpaceId(membership.space_id);
+      const partner = await getPartnerPublicKey(membership.space_id, user.id);
+      setPartnerId(partner?.userId ?? null);
+      setPartnerReady(Boolean(partner?.publicKeyHex));
+
+      const { data, error } = await supabase
+        .from("snap_deliveries")
+        .select("id,space_id,sender_id,recipient_id,object_path,status,ephemeral_public_key,wrap_salt,wrap_nonce,wrapped_file_key,content_nonce,mime_type,file_size_bytes,captured_at")
+        .eq("recipient_id", user.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      setPending((data ?? []) as PendingSnap[]);
+    } catch (error) {
+      Alert.alert("Couldn't refresh memories", error instanceof Error ? error.message : "Please try again.");
+    } finally { setLoading(false); }
+  }, [user]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", state => {
+      if (state === "active") void refresh();
+    });
+    return () => sub.remove();
+  }, [refresh]);
+
+  const pendingCount = pending.length;
+  const sentCount = useMemo(() => localSnaps.filter(item => item.direction === "sent").length, [localSnaps]);
+
+  async function choosePhoto(source: "camera" | "library") {
+    if (!user || !supabase || !spaceId) {
+      Alert.alert("Connect your shared space", "Create or join the two-person shared space first.");
+      return;
+    }
+    if (!partnerReady) {
+      Alert.alert("Ask your partner to open ONE-OS", "Their device needs to register its private photo-receiving key once. They can open this screen while signed in.");
+      return;
+    }
+    setBusy(true);
+    try {
+      let result: ImagePicker.ImagePickerResult;
+      if (source === "camera") {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) throw new Error("Camera permission is needed to capture a snap.");
+        result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.82, allowsEditing: false });
+      } else {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) throw new Error("Photo access permission is needed to choose a snap.");
+        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.82, allowsEditing: false });
+      }
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const bytes = await new File(asset.uri).bytes();
+      if (bytes.length < 1 || bytes.length > MAX_PLAINTEXT_BYTES) {
+        throw new Error("Choose an image smaller than 20 MB. ONE-OS encrypts it before upload.");
+      }
+      const mimeType = asset.mimeType && ["image/jpeg", "image/png", "image/webp", "image/heic"].includes(asset.mimeType)
+        ? asset.mimeType : "image/jpeg";
+
+      const { data: keyRows, error: keyError } = await supabase
+        .from("device_crypto_keys")
+        .select("public_key,last_seen_at")
+        .eq("user_id", partnerId)
+        .order("last_seen_at", { ascending: false })
+        .limit(1);
+      if (keyError) throw keyError;
+      const recipientPublicKeyHex = keyRows?.[0]?.public_key;
+      if (!recipientPublicKeyHex) throw new Error("Your partner's device key is not available yet. Ask them to open ONE-OS.");
+
+      const envelope = encryptSnap(bytes, recipientPublicKeyHex);
+      const { data, error } = await supabase.rpc("create_snap_delivery", {
+        p_space_id: spaceId,
+        p_recipient_id: partnerId,
+        p_ephemeral_public_key: envelope.ephemeralPublicKey,
+        p_wrap_salt: envelope.wrapSalt,
+        p_wrap_nonce: envelope.wrapNonce,
+        p_wrapped_file_key: envelope.wrappedFileKey,
+        p_content_nonce: envelope.contentNonce,
+        p_mime_type: mimeType,
+        p_file_size_bytes: envelope.ciphertext.length,
+        p_captured_at: asset.exif?.DateTimeOriginal ? new Date(asset.exif.DateTimeOriginal).toISOString() : new Date().toISOString(),
+      });
+      if (error) throw error;
+      const created = Array.isArray(data) ? data[0] : data;
+      if (!created?.delivery_id || !created?.object_path) throw new Error("The server did not create the encrypted delivery.");
+
+      const { error: uploadError } = await supabase.storage
+        .from("oneos-private-snaps")
+        .upload(created.object_path, envelope.ciphertext.buffer as ArrayBuffer, {
+          contentType: "application/octet-stream",
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+
+      // Keep a private encrypted copy on the sender's device before finalizing delivery.
+      await saveLocalSnap(user.id, created.delivery_id, mimeType, new Date().toISOString(), "sent", bytes, created.delivery_id);
+
+      const { error: finalizeError } = await supabase.rpc("finalize_snap_upload", {
+        p_delivery_id: created.delivery_id,
+      });
+      if (finalizeError) throw finalizeError;
+
+      await refresh();
+      Alert.alert("Encrypted snap sent", "Your photo is saved privately on this phone. Your partner can receive it when they open ONE-OS.");
+    } catch (error) {
+      Alert.alert("Couldn't send this snap", error instanceof Error ? error.message : "Please try again.");
+    } finally { setBusy(false); }
+  }
+
+  async function receiveSnap(item: PendingSnap) {
+    if (!user || !supabase || !deviceKey) return;
+    setReceivingId(item.id);
+    try {
+      // If acknowledgement previously failed, verify the existing encrypted local copy and retry safely.
+      let existing = localSnaps.find(local => local.deliveryId === item.id);
+      if (existing) {
+        await readLocalSnap(user.id, existing);
+      } else {
+        if (!item.object_path || !item.ephemeral_public_key || !item.wrap_salt || !item.wrap_nonce || !item.wrapped_file_key || !item.content_nonce) {
+          throw new Error("This delivery is missing its encryption envelope.");
+        }
+        const { data: blob, error: downloadError } = await supabase.storage
+          .from("oneos-private-snaps")
+          .download(item.object_path);
+        if (downloadError || !blob) throw downloadError ?? new Error("The encrypted photo is unavailable.");
+        const ciphertext = new Uint8Array(await blob.arrayBuffer());
+        const plaintext = decryptSnap(ciphertext, {
+          ephemeralPublicKey: item.ephemeral_public_key,
+          wrapSalt: item.wrap_salt,
+          wrapNonce: item.wrap_nonce,
+          wrappedFileKey: item.wrapped_file_key,
+          contentNonce: item.content_nonce,
+        }, deviceKey.secretKey);
+
+        // The cloud copy is acknowledged only after successful local encryption and index write.
+        existing = await saveLocalSnap(
+          user.id, item.id, item.mime_type, item.captured_at, "received", plaintext, item.id,
+        );
+        plaintext.fill(0);
+      }
+
+      const { error: ackError } = await supabase.functions.invoke("ack-snap", {
+        body: { deliveryId: item.id },
+      });
+      if (ackError) throw ackError;
+      setPending(old => old.filter(snap => snap.id !== item.id));
+      setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
+      Alert.alert("Memory received", "The photo is now saved encrypted on this phone. The temporary cloud copy and delivery key have been removed.");
+    } catch (error) {
+      Alert.alert("Couldn't receive this snap", error instanceof Error ? error.message : "Please retry when connected.");
+    } finally { setReceivingId(null); }
+  }
+
+  async function openLocal(record: LocalSnap) {
+    if (!user) return;
+    try {
+      const bytes = await readLocalSnap(user.id, record);
+      setPreviewUri("data:" + record.mimeType + ";base64," + bytesToBase64(bytes));
+      bytes.fill(0);
+    } catch (error) {
+      Alert.alert("Couldn't open memory", error instanceof Error ? error.message : "The local file is unavailable.");
+    }
+  }
+
+  return <ScrollView style={s.page} contentContainerStyle={s.body}>
+    <Pressable onPress={() => router.back()}><Text style={s.back}>←  Back</Text></Pressable>
+    <Text style={s.eyebrow}>PRIVATE · END-TO-END ENCRYPTED</Text>
+    <Text style={s.heading}>Little moments.</Text>
+    <Text style={s.sub}>A snap is encrypted on your phone, delivered privately, then kept in each person's own encrypted memory vault.</Text>
+
+    <View style={s.stats}>
+      <View style={s.stat}><Text style={s.statValue}>{pendingCount}</Text><Text style={s.statLabel}>WAITING FOR YOU</Text></View>
+      <View style={s.stat}><Text style={s.statValue}>{localSnaps.length}</Text><Text style={s.statLabel}>ON THIS PHONE</Text></View>
+      <View style={s.stat}><Text style={s.statValue}>{sentCount}</Text><Text style={s.statLabel}>SAVED BY YOU</Text></View>
+    </View>
+
+    {!spaceId ? <View style={s.card}>
+      <Text style={s.cardTitle}>Connect your shared space first</Text>
+      <Text style={s.muted}>Private snaps are sent only to the other person in your two-member ONE-OS shared space.</Text>
+      <Pressable style={s.primary} onPress={() => router.push("/shared")}><Text style={s.primaryText}>Open shared space</Text></Pressable>
+    </View> : <>
+      <View style={s.card}>
+        <Text style={s.cardTitle}>Capture or share a photo</Text>
+        <Text style={s.muted}>{partnerReady ? "Your partner's receiving key is available." : "Your partner needs to open ONE-OS once to register their device key."}</Text>
+        <View style={s.actionRow}>
+          <Pressable disabled={busy || !partnerReady} style={[s.primary, s.action, (busy || !partnerReady) && s.disabled]} onPress={() => void choosePhoto("camera")}>
+            {busy ? <ActivityIndicator color="#101216" /> : <Text style={s.primaryText}>Take a snap</Text>}
+          </Pressable>
+          <Pressable disabled={busy || !partnerReady} style={[s.secondary, s.action, (busy || !partnerReady) && s.disabled]} onPress={() => void choosePhoto("library")}>
+            <Text style={s.secondaryText}>Choose photo</Text>
+          </Pressable>
+        </View>
+        <Text style={s.footnote}>Images are limited to 20 MB. Only encrypted bytes and a wrapped one-time key are uploaded.</Text>
+      </View>
+
+      <View style={s.card}>
+        <View style={s.sectionRow}>
+          <Text style={s.cardTitle}>Waiting in your inbox</Text>
+          <Pressable onPress={() => void refresh()}><Text style={s.refresh}>Refresh ↻</Text></Pressable>
+        </View>
+        {loading ? <ActivityIndicator color="#b7adff" /> : pending.length ? pending.map(item => (
+          <View key={item.id} style={s.inboxItem}>
+            <View style={{flex:1}}>
+              <Text style={s.inboxTitle}>A new private memory</Text>
+              <Text style={s.muted}>{new Date(item.captured_at).toLocaleString()}</Text>
+            </View>
+            <Pressable disabled={receivingId === item.id} style={s.receive} onPress={() => void receiveSnap(item)}>
+              {receivingId === item.id ? <ActivityIndicator color="#101216" /> : <Text style={s.receiveText}>Receive</Text>}
+            </Pressable>
+          </View>
+        )) : <Text style={s.muted}>Nothing waiting right now. When your partner sends a snap, it will appear here.</Text>}
+      </View>
+    </>}
+
+    <View style={s.card}>
+      <Text style={s.cardTitle}>Your private photo calendar</Text>
+      <Text style={s.muted}>These are memories stored only on this phone. Tap one to open it. They are not automatically exported to your Gallery.</Text>
+      {localSnaps.length ? <View style={s.memoryList}>
+        {localSnaps.map(item => (
+          <Pressable key={item.id} style={s.memory} onPress={() => void openLocal(item)}>
+            <View style={s.memoryIcon}><Text style={s.memoryIconText}>✦</Text></View>
+            <View style={{flex:1}}>
+              <Text style={s.inboxTitle}>{item.direction === "sent" ? "You shared a moment" : "A moment from your partner"}</Text>
+              <Text style={s.muted}>{new Date(item.capturedAt).toLocaleString()}</Text>
+            </View>
+            <Text style={s.openArrow}>Open →</Text>
+          </Pressable>
+        ))}
+      </View> : <Text style={s.muted}>Your saved photo memories will appear here.</Text>}
+    </View>
+
+    <View style={s.noteCard}>
+      <Text style={s.noteTitle}>A small privacy promise</Text>
+      <Text style={s.muted}>The temporary server copy is deleted after your partner receives and locally saves the photo. If their device has no successful ONE-OS server heartbeat for 72 hours, pending cloud photos and their delivery keys expire. Already received photos stay on each device. If they open the app offline, that cannot reset the server timer until they reconnect.</Text>
+    </View>
+    <Text style={s.footer}>ONE-OS · private moments, kept close</Text>
+
+    <Modal visible={Boolean(previewUri)} transparent animationType="fade" onRequestClose={() => setPreviewUri(null)}>
+      <View style={s.modal}>
+        <Pressable style={s.modalClose} onPress={() => setPreviewUri(null)}><Text style={s.modalCloseText}>Close ✕</Text></Pressable>
+        {previewUri ? <Image source={{uri:previewUri}} resizeMode="contain" style={s.preview} /> : null}
+      </View>
+    </Modal>
+  </ScrollView>;
+}
+
+const s = StyleSheet.create({
+  page:{flex:1,backgroundColor:"#101216"},body:{padding:22,paddingTop:56,paddingBottom:50},back:{color:"#c7bfff",fontSize:14,marginBottom:30},
+  eyebrow:{color:"#9b8cff",fontSize:10,letterSpacing:2,fontWeight:"700"},heading:{color:"#f4f2ff",fontSize:38,fontWeight:"700",marginTop:13},
+  sub:{color:"#9699a5",fontSize:13,lineHeight:21,marginTop:9,marginBottom:20},
+  stats:{flexDirection:"row",gap:8,marginBottom:14},stat:{flex:1,backgroundColor:"#1a1d24",borderRadius:14,padding:12,borderWidth:1,borderColor:"#2a2e38"},
+  statValue:{color:"#f4f2ff",fontSize:23,fontWeight:"800"},statLabel:{color:"#858b98",fontSize:8,letterSpacing:0.7,marginTop:5},
+  card:{backgroundColor:"#1a1d24",borderColor:"#2a2e38",borderWidth:1,borderRadius:18,padding:17,marginTop:13},
+  cardTitle:{color:"#f4f2ff",fontSize:17,fontWeight:"700",marginBottom:8},muted:{color:"#9699a5",fontSize:12,lineHeight:19},
+  actionRow:{flexDirection:"row",gap:10,marginTop:8},action:{flex:1},primary:{backgroundColor:"#b7adff",padding:14,borderRadius:12,alignItems:"center",marginTop:13},primaryText:{color:"#101216",fontWeight:"800",fontSize:13},
+  secondary:{backgroundColor:"#29243a",padding:14,borderRadius:12,alignItems:"center",marginTop:13},secondaryText:{color:"#d8d1ff",fontWeight:"800",fontSize:13},
+  disabled:{opacity:0.45},footnote:{color:"#727987",fontSize:10,lineHeight:16,marginTop:12},
+  sectionRow:{flexDirection:"row",alignItems:"center",justifyContent:"space-between"},refresh:{color:"#c7bfff",fontSize:12,fontWeight:"700"},
+  inboxItem:{borderTopWidth:1,borderTopColor:"#2a2e38",paddingTop:13,marginTop:10,flexDirection:"row",alignItems:"center",gap:12},
+  inboxTitle:{color:"#f4f2ff",fontSize:13,fontWeight:"700"},receive:{backgroundColor:"#b7adff",paddingHorizontal:16,paddingVertical:10,borderRadius:10,minWidth:80,alignItems:"center"},receiveText:{color:"#101216",fontWeight:"800",fontSize:12},
+  memoryList:{marginTop:6},memory:{flexDirection:"row",alignItems:"center",gap:11,borderTopWidth:1,borderTopColor:"#2a2e38",paddingVertical:12},
+  memoryIcon:{width:36,height:36,borderRadius:11,backgroundColor:"#29243a",alignItems:"center",justifyContent:"center"},memoryIconText:{color:"#c7bfff",fontSize:18},
+  openArrow:{color:"#c7bfff",fontSize:11,fontWeight:"700"},noteCard:{backgroundColor:"#181a23",borderRadius:16,padding:16,marginTop:13,borderWidth:1,borderColor:"#3b3658"},
+  noteTitle:{color:"#c7bfff",fontSize:13,fontWeight:"800",marginBottom:7},footer:{color:"#666c79",fontSize:10,textAlign:"center",marginTop:24},
+  modal:{flex:1,backgroundColor:"#08090df2",justifyContent:"center",alignItems:"center",padding:18},modalClose:{position:"absolute",top:55,right:22,zIndex:2,padding:12},modalCloseText:{color:"#f4f2ff",fontWeight:"700"},preview:{width:"100%",height:"78%"},
+});
