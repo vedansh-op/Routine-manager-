@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
   });
   const { data: stale, error } = await supabase
     .from("photo_deliveries")
-    .select("id, object_path, recipient_id, space_id")
+    .select("id, object_path, recipient_id, space_id, status")
     .in("status", ["pending", "delivered"])
     .limit(500);
 
@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
       .from("photo_deliveries")
       .delete()
       .eq("id", delivery.id)
-      .eq("status", "pending");
+      .eq("status", delivery.status);
     if (deleteError) { failures.push(delivery.id); continue; }
     expired++;
   }
