@@ -5,6 +5,7 @@ import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 
 const KEY_PREFIX = "one-os-data-key:";
 const ENCRYPTED_PREFIX = "enc1:";
+const writeQueues = new Map<string, Promise<void>>();
 const toHex = (bytes: Uint8Array) => Array.from(bytes, value => value.toString(16).padStart(2, "0")).join("");
 function fromHex(value: string): Uint8Array {
   if (!/^(?:[0-9a-f]{2})+$/i.test(value)) throw new Error("Encrypted local data is malformed.");
@@ -59,8 +60,17 @@ export async function getEncryptedItem(storageKey: string, userId: string): Prom
 }
 
 export async function setEncryptedItem(storageKey: string, userId: string, value: string): Promise<void> {
-  const key = await getUserKey(userId);
-  const nonce = getRandomBytes(24);
-  const ciphertext = xchacha20poly1305(key, nonce).encrypt(encodeUtf8(value));
-  await AsyncStorage.setItem(storageKey, ENCRYPTED_PREFIX + toHex(nonce) + ":" + toHex(ciphertext));
+  const previous = writeQueues.get(storageKey) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(async () => {
+    const key = await getUserKey(userId);
+    const nonce = getRandomBytes(24);
+    const ciphertext = xchacha20poly1305(key, nonce).encrypt(encodeUtf8(value));
+    await AsyncStorage.setItem(storageKey, ENCRYPTED_PREFIX + toHex(nonce) + ":" + toHex(ciphertext));
+  });
+  writeQueues.set(storageKey, next);
+  try {
+    await next;
+  } finally {
+    if (writeQueues.get(storageKey) === next) writeQueues.delete(storageKey);
+  }
 }
