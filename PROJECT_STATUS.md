@@ -19,6 +19,17 @@ The supplied Stitch bundle was inspected locally. It contains HTML prototypes, s
 - [ ] Configure a real Supabase project and add local Expo public environment variables
 - [ ] Verify sign-up, sign-in, session restore, password reset, and sign-out on Android
 
+
+
+## Phase 2 — Code-only shared-space foundation
+- [x] Added database schema for shared spaces, members, and invitation records
+- [x] Added authenticated RPC to create a shared space and generate a one-time code
+- [x] Added authenticated RPC to redeem a code; codes expire after 7 days and can only be used once
+- [x] Enforced a maximum of two members and prevented a user joining multiple shared spaces
+- [ ] Run the Phase 2 SQL migration in the Supabase SQL Editor
+- [ ] Add Create space / Enter code screens and connect them to the RPCs
+- [ ] Test the flow with two separate accounts/devices
+
 ## Validation still required
 - Install dependencies and run TypeScript checks.
 - Run the app on an Android device and fix runtime/build issues.
