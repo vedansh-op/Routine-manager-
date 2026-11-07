@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "ONE-OS",
+    "slug": "one-os",
+    "scheme": "oneos",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": ["expo-router"],
+    "android": {
+      "package": "com.vedansh.oneos",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#111318"
+      }
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
