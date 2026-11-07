@@ -1,0 +1,79 @@
+import * as SecureStore from "expo-secure-store";
+import { getRandomBytes } from "expo-crypto";
+import { x25519 } from "@noble/curves/ed25519.js";
+import { supabase } from "@/lib/supabase";
+
+export type DeviceCryptoKey = {
+  deviceId: string;
+  secretKey: Uint8Array;
+  publicKey: Uint8Array;
+  publicKeyHex: string;
+};
+
+const toHex = (bytes: Uint8Array) =>
+  Array.from(bytes, value => value.toString(16).padStart(2, "0")).join("");
+
+function fromHex(value: string): Uint8Array {
+  if (!/^(?:[0-9a-f]{2})+$/i.test(value)) throw new Error("Saved device key is malformed.");
+  return Uint8Array.from(value.match(/.{2}/g) ?? [], part => parseInt(part, 16));
+}
+
+/** Keeps each account's X25519 private key in Android Keystore and publishes only the public key. */
+export async function ensureDeviceCryptoKey(userId: string): Promise<DeviceCryptoKey> {
+  if (!supabase) throw new Error("Connect Supabase before registering a device key.");
+  const deviceAlias = "one-os-snap-device:" + userId;
+  const secretAlias = "one-os-snap-x25519:" + userId;
+  let deviceId = await SecureStore.getItemAsync(deviceAlias);
+  let secretHex = await SecureStore.getItemAsync(secretAlias);
+
+  if (!deviceId && !secretHex) {
+    deviceId = toHex(getRandomBytes(16));
+    secretHex = toHex(getRandomBytes(32));
+    await SecureStore.setItemAsync(deviceAlias, deviceId, {
+      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    });
+    await SecureStore.setItemAsync(secretAlias, secretHex, {
+      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    });
+  } else if (!deviceId || !secretHex) {
+    throw new Error("This device's photo encryption key is incomplete. Existing encrypted memories were not replaced.");
+  }
+
+  const secretKey = fromHex(secretHex);
+  if (secretKey.length !== 32 || !/^[0-9a-f]{32}$/.test(deviceId)) {
+    throw new Error("This device's photo encryption key is invalid.");
+  }
+
+  const publicKey = x25519.getPublicKey(secretKey);
+  const publicKeyHex = toHex(publicKey);
+  const { error } = await supabase.rpc("register_device_crypto_key", {
+    p_device_id: deviceId,
+    p_public_key: publicKeyHex,
+  });
+  if (error) throw error;
+  return { deviceId, secretKey, publicKey, publicKeyHex };
+}
+
+export async function getPartnerPublicKey(spaceId: string, ownUserId: string): Promise<{ userId: string; publicKeyHex: string } | null> {
+  if (!supabase) throw new Error("Connect Supabase before sharing photos.");
+  const { data: partner, error: partnerError } = await supabase
+    .from("space_members")
+    .select("user_id")
+    .eq("space_id", spaceId)
+    .neq("user_id", ownUserId)
+    .maybeSingle();
+  if (partnerError) throw partnerError;
+  if (!partner?.user_id) return null;
+
+  const freshness = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: device, error: keyError } = await supabase
+    .from("device_crypto_keys")
+    .select("public_key,last_seen_at")
+    .eq("user_id", partner.user_id)
+    .gt("last_seen_at", freshness)
+    .order("last_seen_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (keyError) throw keyError;
+  return device?.public_key ? { userId: partner.user_id, publicKeyHex: device.public_key } : null;
+}
