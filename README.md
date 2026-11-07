@@ -108,3 +108,14 @@ The Supabase migration `202611070005_encrypted_snap_delivery.sql` creates the pu
 The 72-hour rule uses the server's last successful authenticated heartbeat. Opening ONE-OS while offline cannot reset that timer until the phone reconnects. Expiry removes only pending cloud photo objects and their delivery records; it does not remove account data or photos already saved locally.
 
 **Not yet end-to-end verified:** Supabase migrations/functions have not been deployed to the live project, and two-device camera/send/receive/acknowledgement/expiry tests are still required. A device reinstall loses its SecureStore private photo key and its local vault; there is no key-recovery or encrypted cloud backup yet. Do not treat the app as a production secure messenger until these risks and tests are addressed.
+
+
+## Photo privacy foundation (in progress)
+
+The private photo-delivery backend and client cryptographic primitives are now present in source. Photos are intended to be encrypted on-device with a fresh XChaCha20-Poly1305 key; that key is wrapped to the partner's X25519 public key using an ephemeral exchange and HKDF-SHA256. The recipient's private key is stored in Android SecureStore. Supabase stores ciphertext and an opaque key envelope only. The Android camera/picker, upload/inbox UI, private local save, first-contact key verification, and physical-device tests are still pending.
+
+Apply the new migrations after the earlier migrations:
+- `202611080001_private_photo_delivery.sql`
+- `202611080002_photo_key_directory.sql`
+
+Deploy `supabase/functions/purge-stale-photo-deliveries` and schedule it every 15 minutes. Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and a long random `ONEOS_PURGE_CRON_SECRET` as Edge Function secrets. Cron must send that secret in the `x-oneos-cron-secret` header. Never place the service-role key in the app or repository.
