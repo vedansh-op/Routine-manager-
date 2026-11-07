@@ -47,6 +47,22 @@ export default function SharedSpaceScreen() {
     } finally { setBusy(false); }
   }
 
+  async function renewInvite() {
+    if (!supabase) return Alert.alert("Setup required", "Connect your Supabase project first.");
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.rpc("rotate_shared_invite");
+      if (error) throw error;
+      const result = Array.isArray(data) ? data[0] : data;
+      if (!result?.invite_code) throw new Error("The server did not return a replacement invitation code.");
+      setGeneratedCode(result.invite_code);
+      setExpiresAt(result.expires_at);
+      Alert.alert("New invitation code ready", "The previous unused code has been invalidated. Share this new code privately.");
+    } catch (error) {
+      Alert.alert("Couldn't renew invitation", error instanceof Error ? error.message : "Please try again.");
+    } finally { setBusy(false); }
+  }
+
   async function joinSpace() {
     const code = inviteCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (code.length !== 12) return Alert.alert("Check the code", "Enter the 12-character invitation code.");
@@ -74,6 +90,12 @@ export default function SharedSpaceScreen() {
       <Text style={s.spaceName}>{membership.spaces?.name ?? "Our shared space"}</Text>
       <Text style={s.copy}>You're connected as {membership.role}. Shared features will appear here as they are enabled.</Text>
       <Text style={s.meta}>Space ID</Text><Text selectable style={s.id}>{membership.space_id}</Text>
+      {membership.role === "owner" ? <>
+        <Text style={s.copy}>Lost the code or did it expire? You can issue a replacement before your partner joins. Any older unused code will stop working.</Text>
+        <Pressable disabled={busy} onPress={() => void renewInvite()} style={[s.secondary, busy && s.disabled]}>
+          {busy ? <ActivityIndicator color="#d8d1ff" /> : <Text style={s.secondaryText}>Generate replacement code</Text>}
+        </Pressable>
+      </> : null}
       {!!generatedCode && <View style={s.codePanel}>
         <Text style={s.label}>YOUR INVITATION CODE</Text>
         <Text selectable style={s.code}>{generatedCode}</Text>
