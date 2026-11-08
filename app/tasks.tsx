@@ -23,12 +23,18 @@ export default function Tasks() {
         title: task.title,
         body: "It's time for this task.",
         route: "/tasks",
+        sourceKey: "task:" + task.id,
         repeat: { kind: "once", date: date.toISOString() },
       });
-      setTaskReminder(task.id, next.id, date.toISOString());
-      if (task.reminderId) {
-        await cancelReminder(user.id, task.reminderId).catch(() => undefined);
+      if (task.reminderId && task.reminderId !== next.id) {
+        try {
+          await cancelReminder(user.id, task.reminderId);
+        } catch (error) {
+          await cancelReminder(user.id, next.id).catch(() => undefined);
+          throw error;
+        }
       }
+      setTaskReminder(task.id, next.id, date.toISOString());
     } catch (error) {
       Alert.alert(
         "Couldn't set task reminder",
