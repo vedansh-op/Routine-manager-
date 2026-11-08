@@ -103,7 +103,7 @@ These are source-level features; CI and real-device behavior still need verifica
 - Add source-item IDs and an idempotent reconciliation job so repeated app opens never duplicate reminders.
 - Extend notification history with missed/delayed state and reliable background delivery reconciliation.
 - Build task/habit-aware daily briefing and evening summary content; current morning/evening prompts are simple reminders only.
-- Add focus-session and streak rules.
+- Extend focus sessions with break cycles, custom durations and a durable timer UI; add habit streak rules.
 - Add priority/grouping/deduplication and smart frequency limits.
 - Implement remote push with test-only credentials/project first; no production secrets or deployment during this phase.
 - Implement location and travel handling with explicit permission and privacy review.
