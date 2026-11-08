@@ -38,7 +38,7 @@ function SessionGate() {
   useEffect(() => {
     if (loading || (!assuranceReady && session && emailVerified && !recovery)) return;
     if ((!configured || !session) && !inAuth) router.replace("/auth");
-    else if (session && configured && !emailVerified && !inVerifyEmail) router.replace("/verify-email");
+    else if (session && configured && !recovery && !emailVerified && !inVerifyEmail) router.replace("/verify-email");
     else if (session && configured && emailVerified && !recovery && !aal2 && !inMfa) router.replace("/mfa");
     else if (session && configured && emailVerified && !recovery && aal2 && (inAuth || inMfa || inVerifyEmail)) router.replace("/");
   }, [configured, loading, session, emailVerified, recovery, assuranceReady, aal2, inAuth, inMfa, inVerifyEmail, router]);
