@@ -24,15 +24,24 @@ begin
   if tg_table_name = 'spaces' then
     if tg_op = 'DELETE' then
       if old.space_type <> 'shared' then return old; end if;
+    elsif tg_op = 'UPDATE' then
+      if old.space_type <> 'shared' and new.space_type <> 'shared' then return new; end if;
     else
       if new.space_type <> 'shared' then return new; end if;
     end if;
   elsif tg_table_name = 'space_members' then
-    if tg_op = 'DELETE' then v_space_id := old.space_id;
-    else v_space_id := new.space_id;
+    if tg_op = 'DELETE' then
+      v_space_id := old.space_id;
+      select s.space_type into v_space_type from public.spaces s where s.id = v_space_id;
+    elsif tg_op = 'UPDATE' then
+      select s.space_type into v_space_type
+      from public.spaces s
+      where s.id in (old.space_id, new.space_id) and s.space_type = 'shared'
+      limit 1;
+    else
+      v_space_id := new.space_id;
+      select s.space_type into v_space_type from public.spaces s where s.id = v_space_id;
     end if;
-    select s.space_type into v_space_type
-    from public.spaces s where s.id = v_space_id;
     if v_space_type is distinct from 'shared' then
       if tg_op = 'DELETE' then return old; else return new; end if;
     end if;
