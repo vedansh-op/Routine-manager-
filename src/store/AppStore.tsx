@@ -35,7 +35,7 @@ type Store = {
   setRoutineSchedule: (id: string, reminderIds: string[], startAt: string) => void;
   removeRoutine: (id: string) => Promise<void>;
   completeRoutine: (id: string) => Promise<boolean>;
-  toggleHabitToday: (id: string) => void;
+  toggleHabitToday: (id: string) => boolean;
   setHabitReminder: (id: string, reminderIds: string[] | null, reminderTime?: string, reminderDays?: number[]) => void;
 };
 const keyForUser = (userId: string) => "one-os-v2:" + userId;
@@ -186,9 +186,10 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     if (value) setHabits(old => [{ id: uid(), title: value, createdAt: new Date().toISOString(), archived: false }, ...old]);
   }, [storageUnlocked, ready, activeUserId, userId]);
   const toggleHabitToday = useCallback((id: string) => {
-    if (!storageUnlocked || !ready || activeUserId !== userId) return;
+    if (!storageUnlocked || !ready || activeUserId !== userId) return false;
     const key = id + ":" + today();
     setCompletions(old => old.includes(key) ? old.filter(x => x !== key) : [...old, key]);
+    return true;
   }, [storageUnlocked, ready, activeUserId, userId]);
 
   const addRoutine = useCallback((title: string, steps: RoutineStep[]) => {
