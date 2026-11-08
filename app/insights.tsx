@@ -50,7 +50,6 @@ export default function Insights() {
         tasks_completed: tasks.filter(task => task.completed).length,
         habits_total: habits.length,
         habit_checkins_last_7_days: weeklyHabitCheckins,
-        generated_at: new Date().toISOString(),
       };
       const { error } = await supabase.from("weekly_reports").upsert({
         user_id: user.id,
