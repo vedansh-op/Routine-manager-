@@ -74,7 +74,7 @@ The agreed visible device management and lost-device revocation policy are not i
 **Required remediation**
 Design a server-authoritative device registry with explicit status/revoked_at, authenticated AAL2 revocation, session revocation semantics, and recipient-device eligibility checks in Snap creation and Storage reads. Ensure revocation does not silently destroy the only decryption key for already delivered data. Test lost-device recovery on a replacement device before revoking the old one.
 
-**Status: PARTIALLY IMPLEMENTED IN SOURCE — migration `202611080013_device_revocation.sql` adds `revoked_at` and an AAL2-only owner-scoped revocation RPC; `app/account.tsx` lists registered devices and offers revocation of other devices, while protecting the current phone from accidental self-revocation. Snap recipient selection, new-delivery insertion, partner-key visibility, and Storage reads now exclude revoked keys. Non-production tests and recovery/key-continuity tests remain OPEN.
+**Status: PARTIALLY IMPLEMENTED IN SOURCE — migration `202611080013_device_revocation.sql` adds `revoked_at` and an AAL2-only owner-scoped revocation RPC; `app/account.tsx` lists registered devices and offers revocation of other devices, while protecting the current phone from accidental self-revocation. Snap recipient selection, new-delivery insertion, partner-key visibility, and Storage reads now exclude revoked keys. Non-production tests and recovery/key-continuity tests remain OPEN. **This revokes the Snap encryption key only; it does not terminate the lost phone's Supabase login session.**
 
 ### AUTH-05 — Recovery password flow is not a key-recovery flow
 
@@ -135,3 +135,18 @@ No migrations were executed. No Supabase project was accessed. No Edge Function 
 - Revocation cannot remotely erase plaintext or ciphertext already copied to a device. It also does not restore access to old deliveries encrypted to a revoked/lost private key. Key recovery/re-wrapping remains a separate release blocker.
 - Migration ordering: `revoked_at` is added in migration `202611080006_snap_redownload_policy.sql` before migration `202611080008_scope_partner_device_key_visibility.sql` references it; migration 013 repeats the addition with `IF NOT EXISTS` for safe standalone upgrades.
 - Must test on a disposable Supabase project: revoke another device at AAL2; reject AAL1; verify revoked device cannot discover partner keys, receive new deliveries, or download retained ciphertext; verify owner can still see revoked history; confirm current device cannot revoke itself in UI; verify unrelated partner and existing local memories remain intact.
+
+
+### AUTH-04 additional boundary: account session revocation is still missing
+
+The current device revocation implementation is deliberately limited to the X25519 device key and Snap eligibility. It does **not** revoke the lost phone's Supabase refresh/access session, and it cannot remotely erase already downloaded files. Therefore it must not be described as complete lost-device account containment.
+
+Before release, add a separate session/device authorization design that can revoke the lost installation's authenticated access without signing out every trusted device. Do not approximate per-device revocation by globally signing out the account unless the user explicitly chooses that emergency action. Verify every Edge Function, RPC, Storage policy, and database write path uses the intended device/session authorization boundary. Existing Supabase sessions are not automatically bound to the X25519 device ID.
+
+### Recovery work must remain split into two independent systems
+
+1. **Authenticator recovery codes:** one-time codes for regaining account MFA access if the authenticator is lost. They must be high entropy, shown once, stored server-side only as protected verifiers, rate-limited, single-use under transaction, and trigger factor replacement/session review. They do not decrypt photos.
+2. **Encryption-key recovery:** a separate user-controlled recovery secret or reviewed key-wrapping scheme that can restore the device's X25519 private key and historical file keys. It must be tested offline and after phone replacement. An email password reset or MFA recovery code is not a substitute.
+3. **Device replacement:** after successful recovery, register a new key, establish a verified partner-key rotation ceremony, re-wrap or re-share historical keys where authorized, then revoke the lost device's key and authenticated session. Preserve an audit trail and avoid silently trusting a changed partner fingerprint.
+
+Do not implement a client-only "recovery successful" flag. Both recovery systems need server-verified, replay-resistant protocols and independent cryptographic review before release.
