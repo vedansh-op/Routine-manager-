@@ -136,3 +136,24 @@ test("mismatched orphaned file is preserved and never indexed", async () => {
   assert.deepEqual(Array.from(files.get(orphanPath)), before);
   assert.equal(await vault.getLocalSnaps("user-a").then(items => items.length), 0);
 });
+
+
+test("read and delete reject records that are not in the encrypted index", async () => {
+  files.clear();
+  indexValue = null;
+  const saved = await vault.saveLocalSnap("user-a", "delivery-owned", "image/jpeg", "2026-01-01T00:00:00.000Z", "sent", new Uint8Array([6]));
+  const forged = { ...saved, id: "delivery-other", fileUri: saved.fileUri };
+  await assert.rejects(vault.readLocalSnap("user-a", forged), /no longer in your vault/i);
+  await assert.rejects(vault.deleteLocalSnap("user-a", forged), /no longer in your vault/i);
+  assert.equal(files.has(saved.fileUri), true);
+  assert.equal((await vault.getLocalSnaps("user-a")).length, 1);
+});
+
+test("delivery linking rejects missing IDs and conflicting relinks", async () => {
+  files.clear();
+  indexValue = null;
+  await vault.saveLocalSnap("user-a", "delivery-link", "image/jpeg", "2026-01-01T00:00:00.000Z", "sent", new Uint8Array([6]));
+  await assert.rejects(vault.linkLocalSnapDelivery("user-a", "missing", "delivery-link"), /no longer in your vault/i);
+  await vault.linkLocalSnapDelivery("user-a", "delivery-link", "delivery-link");
+  await assert.rejects(vault.linkLocalSnapDelivery("user-a", "delivery-link", "delivery-other"), /different delivery/i);
+});
