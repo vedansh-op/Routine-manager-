@@ -106,7 +106,7 @@ No SQL has been run against the configured project during this work. No Edge Fun
 ## Phase 1 design documents
 
 - docs/ONE_OS_PHASE_1_THREAT_MODEL.md
-- docs/ONE_OS_PHASE_1_DATABASE_OBJECT_INVENTORY.md (see the linked Supabase security audit's final source-level inventory section)
+- docs/ONE_OS_SUPABASE_SECURITY_AUDIT.md (final source-level inventory section lists 21 RLS/Storage policies and 23 SECURITY DEFINER functions)
 - docs/ONE_OS_PHASE_1_SCHEMA_AND_ARCHIVE_SPEC.md
 - docs/ONE_OS_PHASE_1_FAILURE_MATRIX.md
 - docs/ONE_OS_PHASE_1_EXIT_REVIEW.md
