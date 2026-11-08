@@ -9,7 +9,7 @@ import { migrateLegacyRecordForUser } from "@/lib/legacyMigration";
 import { cancelReminder } from "@/lib/notifications";
 
 export type Task = { id: string; title: string; notes?: string; dueDate?: string; reminderId?: string; completed: boolean; createdAt: string };
-export type Habit = { id: string; title: string; createdAt: string; archived: boolean };
+export type Habit = { id: string; title: string; createdAt: string; archived: boolean; reminderId?: string; reminderTime?: string };
 type Store = {
   tasks: Task[];
   habits: Habit[];
@@ -22,6 +22,7 @@ type Store = {
   setTaskReminder: (id: string, reminderId: string, dueDate: string) => void;
   addHabit: (title: string) => void;
   toggleHabitToday: (id: string) => void;
+  setHabitReminder: (id: string, reminderId: string | null, reminderTime?: string) => void;
 };
 const keyForUser = (userId: string) => "one-os-v2:" + userId;
 const migratedKey = (userId: string) => "one-os-v2-migrated:" + userId;
@@ -165,8 +166,15 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setCompletions(old => old.includes(key) ? old.filter(x => x !== key) : [...old, key]);
   }, [storageUnlocked, ready, activeUserId, userId]);
 
+  const setHabitReminder = useCallback((id: string, reminderId: string | null, reminderTime?: string) => {
+    if (!storageUnlocked || !ready || activeUserId !== userId) return;
+    setHabits(old => old.map(item => item.id === id
+      ? { ...item, reminderId: reminderId ?? undefined, reminderTime: reminderId ? reminderTime : undefined }
+      : item));
+  }, [storageUnlocked, ready, activeUserId, userId]);
+
   const canEdit = ready && storageUnlocked && activeUserId === userId;
-  const value = useMemo(() => ({ tasks, habits, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday }), [tasks, habits, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday]);
+  const value = useMemo(() => ({ tasks, habits, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday, setHabitReminder }), [tasks, habits, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday, setHabitReminder]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 export function useAppStore() {
