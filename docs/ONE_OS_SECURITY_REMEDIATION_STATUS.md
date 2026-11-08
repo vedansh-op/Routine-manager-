@@ -4,6 +4,8 @@ This status covers six additive security migrations and two updated Snap Edge Fu
 
 ## Finding-by-finding status
 
+| SEC-12 — shared activity archive scope changes | Added a database trigger that makes activity ID, owning space, and original creator immutable after creation, preventing an UPDATE from moving a live event into another partner's shared space while leaving a stale copy in the prior archive. | **Source guard added; validate trigger ordering and update rejection in non-production PostgreSQL.** |
+
 | Finding | Changes now present on branch | Status |
 |---|---|---|
 | SEC-01 — account deletion cascades shared data | Detached archive tables retain shared calendar snapshots without FK cascades to Auth users or live spaces. Archive participant authorization links become null on account deletion while the other participant's link survives. | **Source remediation added; needs PostgreSQL + two-account deletion tests.** Other shared data types (future shared files, notes, tasks) still need to be added to the archive model before claiming all shared history is covered. |
@@ -26,6 +28,7 @@ This status covers six additive security migrations and two updated Snap Edge Fu
 - supabase/migrations/202611080004_report_and_write_limits.sql
 - supabase/migrations/202611080005_trigger_function_privileges.sql
 - supabase/migrations/202611080006_snap_redownload_policy.sql
+- supabase/migrations/202611080007_immutable_shared_activity_scope.sql
 - supabase/functions/ack-snap/index.ts
 - supabase/functions/expire-stale-snaps/index.ts
 - app/shared.tsx
@@ -67,6 +70,7 @@ These are source changes, not verified deployed fixes. The migrations have not y
 11. Inspect effective grants, RLS policies, Storage policies, SECURITY DEFINER grants, cron, Vault and Edge Function secrets in the test project.
 12. Run two-account and multi-device negative tests for every table and object path.
 13. Verify trigger-only SECURITY DEFINER functions cannot be executed by `anon` or `authenticated`, while their database triggers continue to fire normally.
+14. Attempt to change `shared_activities.id`, `space_id`, and `created_by` as the creator; all three must be rejected, while ordinary title/note/time edits continue to work.
 
 ## Release decision
 
