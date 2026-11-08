@@ -267,6 +267,7 @@ export default function SnapMemoriesScreen() {
 
       // Keep a private encrypted copy on the sender's device before finalizing delivery.
       const senderCopy = await saveLocalSnap(user.id, created.delivery_id, mimeType, capturedAt, "sent", bytes, created.delivery_id);
+      await assertActiveSnapUser(user.id);
       setLocalSnaps(old => [senderCopy, ...old.filter(snap => snap.id !== senderCopy.id)]);
 
       await assertActiveSnapUser(user.id);
@@ -275,7 +276,6 @@ export default function SnapMemoriesScreen() {
       });
       if (finalizeError) throw finalizeError;
 
-      await refresh();
       Alert.alert("Encrypted snap sent", "Your photo is saved privately on this phone. Your partner can receive it when they open ONE-OS.");
     } catch (error) {
       Alert.alert("Couldn't send this snap", error instanceof Error ? error.message : "Please try again.");
@@ -290,9 +290,11 @@ export default function SnapMemoriesScreen() {
       // Re-read the durable vault on every attempt. React state may be stale after an
       // earlier download succeeded but the cloud acknowledgement failed.
       const savedSnaps = await getLocalSnaps(user.id);
+      await assertActiveSnapUser(user.id);
       let existing = savedSnaps.find(local => local.deliveryId === item.id || local.id === item.id);
       if (existing) {
         await readLocalSnap(user.id, existing);
+        await assertActiveSnapUser(user.id);
         setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
       } else {
         if (!item.object_path || !item.ephemeral_public_key || !item.wrap_salt || !item.wrap_nonce || !item.wrapped_file_key || !item.content_nonce) {
@@ -303,7 +305,9 @@ export default function SnapMemoriesScreen() {
           .from("oneos-private-snaps")
           .download(item.object_path);
         if (downloadError || !blob) throw downloadError ?? new Error("The encrypted photo is unavailable.");
+        await assertActiveSnapUser(user.id);
         const ciphertext = new Uint8Array(await blob.arrayBuffer());
+        await assertActiveSnapUser(user.id);
         const plaintext = decryptSnap(ciphertext, {
           ephemeralPublicKey: item.ephemeral_public_key,
           wrapSalt: item.wrap_salt,
@@ -317,6 +321,7 @@ export default function SnapMemoriesScreen() {
           user.id, item.id, item.mime_type, item.captured_at, "received", plaintext, item.id,
         );
         plaintext.fill(0);
+        await assertActiveSnapUser(user.id);
         // Show the durable local copy immediately; acknowledgement is a separate cloud step.
         setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
       }
@@ -342,6 +347,10 @@ export default function SnapMemoriesScreen() {
     if (!user) return;
     try {
       const bytes = await readLocalSnap(user.id, record);
+      if ((await supabase?.auth.getUser())?.data.user?.id !== user.id) {
+        bytes.fill(0);
+        throw new Error("Your account changed. Reopen Private Memories before viewing this photo.");
+      }
       setPreviewUri("data:" + record.mimeType + ";base64," + bytesToBase64(bytes));
       bytes.fill(0);
     } catch (error) {
