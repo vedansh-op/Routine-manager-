@@ -139,7 +139,15 @@ export async function saveLocalSnap(
 
 export async function linkLocalSnapDelivery(userId: string, id: string, deliveryId: string): Promise<void> {
   await withVaultLock(userId, async () => {
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(id) || !/^[a-zA-Z0-9_-]{1,128}$/.test(deliveryId)) {
+      throw new Error("Invalid private memory link.");
+    }
     const existing = await readIndex(userId);
+    const target = existing.find(item => item.id === id);
+    if (!target) throw new Error("This private memory is no longer in your vault.");
+    if (target.deliveryId && target.deliveryId !== deliveryId) {
+      throw new Error("This private memory is already linked to a different delivery.");
+    }
     const next = existing.map(item => item.id === id ? { ...item, deliveryId } : item);
     await setEncryptedItem(indexKey(userId), userId, JSON.stringify(next));
   });
@@ -148,6 +156,11 @@ export async function linkLocalSnapDelivery(userId: string, id: string, delivery
 export async function readLocalSnap(userId: string, record: LocalSnap): Promise<Uint8Array> {
   // Keep deletion/replacement from racing a preview while its bytes are read.
   return withVaultLock(userId, async () => {
+    if (!isLocalSnapRecord(record)) throw new Error("Invalid private memory record.");
+    const existing = await readIndex(userId);
+    if (!existing.some(item => item.id === record.id)) {
+      throw new Error("This private memory is no longer in your vault.");
+    }
     const file = localSnapFile(userId, record.id);
     if (!file.exists) throw new Error("This photo is no longer present on this device.");
     const encryptedAtRest = await file.bytes();
@@ -161,7 +174,11 @@ export async function readLocalSnap(userId: string, record: LocalSnap): Promise<
 
 export async function deleteLocalSnap(userId: string, record: LocalSnap): Promise<void> {
   await withVaultLock(userId, async () => {
+    if (!isLocalSnapRecord(record)) throw new Error("Invalid private memory record.");
     const existing = await readIndex(userId);
+    if (!existing.some(item => item.id === record.id)) {
+      throw new Error("This private memory is no longer in your vault.");
+    }
     // Commit the index removal first. If file deletion fails, the result is
     // an unreferenced encrypted file rather than a broken visible memory.
     await setEncryptedItem(indexKey(userId), userId, JSON.stringify(existing.filter(item => item.id !== record.id)));
