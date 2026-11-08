@@ -43,6 +43,7 @@ export default function ActivityCalendarScreen() {
   const [selectedDate, setSelectedDate] = useState(() => getDateKeyInTimeZone(now, zone));
   const [selectedInstant, setSelectedInstant] = useState(() => new Date());
   const [spaceId, setSpaceId] = useState<string | null>(null);
+  const [connectionEnded, setConnectionEnded] = useState(false);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
@@ -56,8 +57,13 @@ export default function ActivityCalendarScreen() {
       const { data: membership, error: memberError } = await supabase
         .from("space_members").select("space_id").eq("user_id", user.id).limit(1).maybeSingle();
       if (memberError) throw memberError;
-      if (!membership?.space_id) { setSpaceId(null); setActivities([]); return; }
+      if (!membership?.space_id) { setSpaceId(null); setActivities([]); setConnectionEnded(false); return; }
       setSpaceId(membership.space_id);
+      const { data: archive, error: archiveError } = await supabase
+        .from("shared_archives").select("ended_at")
+        .eq("source_space_id", membership.space_id).maybeSingle();
+      if (archiveError) throw archiveError;
+      setConnectionEnded(Boolean(archive?.ended_at));
       const { data, error } = await supabase.from("shared_activities")
         .select("id,title,note,starts_at,timezone,created_by")
         .eq("space_id", membership.space_id).order("starts_at", { ascending: true });
@@ -182,7 +188,7 @@ export default function ActivityCalendarScreen() {
           </View>
         </View>) : <Text style={s.muted}>No shared activities on this date yet.</Text>}
       </View>
-      <View style={s.card}>
+      {!connectionEnded ? <View style={s.card}>
         <Text style={s.cardTitle}>Add a shared moment</Text>
         <Text style={s.muted}>Choose a date and time in your phone's timezone. ONE-OS stores one UTC instant and converts it for your partner automatically.</Text>
         <View style={s.schedulePanel}>
@@ -206,7 +212,7 @@ export default function ActivityCalendarScreen() {
         <Pressable disabled={saving || loading} onPress={() => void addMoment()} style={[s.primary, (saving || loading) && s.disabled]}>
           {saving ? <ActivityIndicator color="#101216" /> : <Text style={s.primaryText}>Add to our calendar</Text>}
         </Pressable>
-      </View>
+      </View> : <View style={s.card}><Text style={s.cardTitle}>Read-only shared history</Text><Text style={s.muted}>This connection has ended. Existing calendar moments remain available to both people, but no new shared moments can be added.</Text></View>}
     </>}
     <Text style={s.footer}>Only activities intentionally added here are stored in the shared cloud space. Private tasks and habits stay on each phone.</Text>
   </ScrollView>;
