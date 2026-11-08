@@ -8,6 +8,7 @@ type TotpFactor = { id: string; friendly_name?: string | null; status?: string; 
 export default function SecurityScreen() {
   const router = useRouter();
   const [factors, setFactors] = useState<TotpFactor[]>([]);
+  const [unverifiedFactors, setUnverifiedFactors] = useState<TotpFactor[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [secret, setSecret] = useState("");
@@ -20,7 +21,9 @@ export default function SecurityScreen() {
     try {
       const { data, error } = await supabase.auth.mfa.listFactors();
       if (error) throw error;
-      setFactors(((data.totp ?? []) as TotpFactor[]).filter(f => f.status === "verified"));
+      const allTotp = (data.totp ?? []) as TotpFactor[];
+      setFactors(allTotp.filter(f => f.status === "verified"));
+      setUnverifiedFactors(allTotp.filter(f => f.status === "unverified"));
     } catch (error) {
       Alert.alert("Couldn't load authenticators", error instanceof Error ? error.message : "Please try again.");
     } finally { setLoading(false); }
@@ -34,8 +37,15 @@ export default function SecurityScreen() {
       Alert.alert("Not available", "ONE-OS currently supports one primary and one backup authenticator. Add a backup only after your primary is verified.");
       return;
     }
+    if (unverifiedFactors.length > 0) {
+      Alert.alert("Finish existing setup first", "An unfinished authenticator enrollment already exists. Do not create another factor. Use the authenticator setup key you saved earlier, or contact support if you no longer have it.");
+      return;
+    }
     setBusy(true);
     try {
+      const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (assuranceError) throw assuranceError;
+      if (assurance.currentLevel !== "aal2") throw new Error("A verified AAL2 session is required to add an authenticator.");
       const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "ONE-OS backup authenticator" });
       if (error) throw error;
       setPendingFactor({ id: data.id, friendly_name: "ONE-OS backup authenticator", status: "unverified", factor_type: "totp" });
@@ -81,6 +91,15 @@ export default function SecurityScreen() {
       { text: "Remove", style: "destructive", onPress: () => { void (async () => {
         setBusy(true);
         try {
+          const { data: assurance, error: assuranceError } = await supabase!.auth.mfa.getAuthenticatorAssuranceLevel();
+          if (assuranceError) throw assuranceError;
+          if (assurance.currentLevel !== "aal2") throw new Error("A verified AAL2 session is required to remove an authenticator.");
+          const { data: latest, error: listError } = await supabase!.auth.mfa.listFactors();
+          if (listError) throw listError;
+          const verifiedNow = (latest.totp ?? []).filter(item => item.status === "verified");
+          if (verifiedNow.length <= 1) throw new Error("The last verified authenticator cannot be removed.");
+          const target = verifiedNow.find(item => item.id === factor.id);
+          if (!target || target.friendly_name !== "ONE-OS backup authenticator") throw new Error("Only the designated backup authenticator can be removed here.");
           const { error } = await supabase!.auth.mfa.unenroll({ factorId: factor.id });
           if (error) throw error;
           await refresh();
