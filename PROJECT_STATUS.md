@@ -121,23 +121,24 @@ The new schema/archive document describes proposed future metadata concepts. It 
 
 ## CI validation
 
-The latest verified feature-branch CI run passed on commit 1bab4deda75f2d345f41b3ad8f2f9c2e2a1532e7:
+The latest verified feature-branch CI run passed on commit d6fd62acd71bc81fc50a95cb3d0a4fdadb1f553a:
 - TypeScript validation passed.
 - Recovery-state suite: 27 tests passed.
 - Notification-state suite: 6 tests passed.
 - Snap crypto suite: 7 tests passed.
 - Secure session storage suite: 7 tests passed.
-- **Total: 47 automated tests passed across four suites.**
+- Database-source inventory suite: 7 tests passed, covering 18 migration files, SQL dollar-quote delimiters, the final 21 policies, 23 SECURITY DEFINER functions, trigger-only grants, service-role cleanup grants and AAL2 trigger coverage.
+- **Total: 54 automated tests passed across five suites.**
 
-Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42534451255
+Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42535477765
 
-The TypeScript workflow runs recovery, notification-state, Snap crypto and secure session storage suites. The Android APK and versioned release workflows run the same regression tests. The APK workflow now also builds this feature branch for device validation.
+The TypeScript, Android APK and versioned release workflows now run all five suites: recovery, notification-state, Snap crypto, secure session storage and database-source inventory.
 
 ## Build and release status
 
-- A current-branch standalone debug APK was built successfully by run https://github.com/vedansh-op/Routine-manager-/actions/runs/42533640626 from source commit `47eeade84cfb7d045dc096471568dfd1ffb9fc10`. Artifact: `ONE-OS-debug-apk` (47,261,710-byte ZIP; contains a 135,856,630-byte APK).
-- APK SHA-256: `de9f626b1a5c0051565a2f6f956fe0cb76b7f608786a90a2bd05a83b42b9fa66`. The APK contains `AndroidManifest.xml`, 21 DEX files and `assets/index.android.bundle`; package includes arm64-v8a, armeabi-v7a, x86 and x86_64 libraries.
-- The workflow verified the embedded JavaScript bundle and uploaded the APK. It has **not** been installed or tested on a physical Android device.
+- An earlier standalone debug APK was built successfully by run https://github.com/vedansh-op/Routine-manager-/actions/runs/42533640626 from pre-SQL-fix source commit `47eeade84cfb7d045dc096471568dfd1ffb9fc10`.
+- A new APK build with the corrected AAL2 migration and all five test suites is running at https://github.com/vedansh-op/Routine-manager-/actions/runs/42535468070. The newer artifact must pass upload and bundle verification before it replaces the older APK.
+- No APK has been installed or tested on a physical Android device.
 - No versioned release or Play Store production-signed build is claimed here.
 - The release workflow creates a standalone debug/test APK, not a Play Store production-signed APK.
 
