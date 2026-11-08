@@ -62,7 +62,7 @@ function SessionGate() {
     return () => { cancelled = true; subscription.remove(); };
   }, [configured, session?.user.id, aal2]);
 
-  if (session && !recovery && assuranceReady && !aal2 && !inMfa) {
+  if (session && !recovery && !inMfa && (!assuranceReady || !aal2)) {
     return <View style={{ flex: 1, backgroundColor: "#101216", alignItems: "center", justifyContent: "center" }}><ActivityIndicator color="#b7adff" /></View>;
   }
   return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#101216" } }} />;
