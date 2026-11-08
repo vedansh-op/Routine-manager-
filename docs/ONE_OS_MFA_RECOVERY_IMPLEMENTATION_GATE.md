@@ -57,7 +57,7 @@ The feature branch now contains:
 - `app/account.tsx`: links to authenticator management.
 - `app/mfa.tsx`: offers a choice among verified factors at sign-in instead of always forcing the first factor.
 
-The UI labels the additional factor as a backup and explicitly warns that it does not recover historical encryption keys. The current implementation is source-only and has not yet been tested against a real Supabase test project or on physical Android devices. Factor ordering/naming and the exact provider behavior for adding/removing factors must be verified before release. The app currently limits its own UI to two factors even though the provider may allow more.
+The UI labels the additional factor as a backup and explicitly warns that it does not recover historical encryption keys. A follow-up hardening change now detects unfinished TOTP enrollments and blocks creation of another factor, checks the current AAL2 level before enrollment/removal, and re-reads the provider factor list before removal to ensure the last verified factor or primary factor is not removed. These are client-side guardrails; Supabase remains the authority for factor operations. The current implementation is source-only and has not yet been tested against a real Supabase test project or on physical Android devices. Factor ordering/naming and the exact provider behavior for adding/removing factors must be verified before release. The app currently limits its own UI to two factors even though the provider may allow more.
 
 ## Status
 
