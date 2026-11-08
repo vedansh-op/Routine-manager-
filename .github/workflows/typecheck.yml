@@ -55,3 +55,6 @@ jobs:
 
       - name: Run Snap crypto tests
         run: npm run test:crypto
+
+      - name: Run secure session storage tests
+        run: npm run test:session
