@@ -61,14 +61,28 @@ export default function FocusScreen() {
         Alert.alert("Notifications are off", "Allow ONE-OS notifications so it can alert you when the focus session ends.");
         return;
       }
+      const endsAt = Date.now() + minutes * 60_000;
       const reminder = await scheduleReminder(user.id, {
         category: "focus",
         title: "Focus session complete",
         body: "Your " + minutes + "-minute focus session is finished. Take a short break and reset.",
         route: "/focus",
         sourceKey: "focus:active-session",
-        repeat: { kind: "once", date: new Date(Date.now() + minutes * 60_000).toISOString() },
+        repeat: { kind: "once", date: new Date(endsAt).toISOString() },
       });
+      try {
+        await scheduleReminder(user.id, {
+          category: "focus",
+          title: "Break is over",
+          body: "Your 5-minute reset is complete. Ready to focus again?",
+          route: "/focus",
+          sourceKey: "focus:active-session:break",
+          repeat: { kind: "once", date: new Date(endsAt + 5 * 60_000).toISOString() },
+        });
+      } catch (error) {
+        await cancelReminder(user.id, reminder.id).catch(() => undefined);
+        throw error;
+      }
       setActive(reminder);
     } catch (error) {
       Alert.alert("Couldn't start focus session", error instanceof Error ? error.message : "Please try again.");
@@ -81,7 +95,12 @@ export default function FocusScreen() {
     if (!user?.id || !active) return;
     setBusy(true);
     try {
-      await cancelReminder(user.id, active.id);
+      const state = await getNotificationState(user.id);
+      const linked = state.reminders.filter(item =>
+        item.sourceKey === "focus:active-session" ||
+        item.sourceKey === "focus:active-session:break",
+      );
+      for (const reminder of linked) await cancelReminder(user.id, reminder.id);
       setActive(null);
     } catch (error) {
       Alert.alert("Couldn't stop focus session", error instanceof Error ? error.message : "Please try again.");
@@ -115,7 +134,7 @@ export default function FocusScreen() {
 
     <Text style={s.permission}>{permission === true ? "Notifications enabled on this device" : permission === false ? "Enable notifications to receive the session-end alert" : "Checking notification permission…"}</Text>
     <Link href="/notifications" style={s.settings}>Notification settings →</Link>
-    <Text style={s.footer}>Only one active focus timer is kept per account. Starting a new session replaces the previous session-end alert.</Text>
+    <Text style={s.footer}>Only one active focus timer is kept per account. Each session schedules an end alert and a 5-minute break-return alert; ending the session cancels both.</Text>
   </ScrollView>;
 }
 
