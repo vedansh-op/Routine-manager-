@@ -23,7 +23,7 @@
 | X25519 device private key | Android SecureStore | Device-bound protection, write-once registration, revocation and separately designed historical-key recovery |
 | Partner public key/fingerprint | Supabase public key row + locally pinned fingerprint | Active shared membership visibility, explicit out-of-band fingerprint verification, key-change review |
 | Shared calendar activities | Supabase while active; detached archive snapshots | Active two-person membership for writes, scoped reads, read-only retention after disconnection |
-| Snap ciphertext and envelope | Current private Supabase Storage bucket and metadata | Exact sender/recipient/device authorization, encryption before upload, replay/expiry controls, no premature deletion |
+| Snap ciphertext and envelope | Current private Supabase Storage bucket and metadata | Exact sender/recipient/device authorization, encryption before upload, replay/expiry controls, no premature deletion. Current v1 AEAD does not bind all separate row metadata as associated data. |
 | Future backup chunks/manifests | Each owner's Google Drive | Client-side authenticated encryption, immutable versions, independent destination health and integrity verification |
 | Future Drive OAuth credentials | Not implemented | Least privilege, protected on-device or approved secret vault; never ordinary plaintext table values |
 | Recovery secret/envelope | Not implemented | High entropy, shown once, never stored plaintext by app server or Drive; reviewed key wrapping |
@@ -52,7 +52,7 @@
 | Malicious or compromised partner | Attempts to read private tasks, keys, files or other users' data | Shared-space membership is not a blanket data grant. RLS, active two-person checks, key discovery scope and separate Drive ownership; verify all policies with negative tests. |
 | Invitation guessing | Unauthorized shared-space join | 96-bit invite tokens, hash-at-rest and per-account throttle exist in source. IP/device abuse monitoring and concurrency validation remain open. |
 | Replay / duplicate RPC or event | Duplicate invite, Snap acknowledgement, backup version or push | Stable IDs, row locks, transactional claims, idempotent acknowledgement/retry and unique constraints. Test duplicate and concurrent calls. |
-| Tampering with ciphertext, manifest or index | Silent corruption or malicious restore | AEAD authentication, exact-byte digest, AAD bound to owner/archive/chunk/domain/version; reject before decrypt/restore. Recovery/archive format still requires independent cryptographic review and test vectors. |
+| Tampering with ciphertext, manifest or index | Silent corruption or malicious restore | AEAD authentication, exact-byte digest, AAD bound to owner/archive/chunk/domain/version; reject before decrypt/restore. Recovery/archive format still requires independent cryptographic review and test vectors. |\n| Snap metadata tampering or row substitution | The delivery row may claim a different recipient, device, shared space, MIME type or capture time than the encrypted payload context | Current Snap v1 authenticates ciphertext and the wrapped file key but does not pass row metadata as AEAD associated data. Server authorization checks remain necessary but are not cryptographic metadata binding. Design a v2 envelope/RPC binding stable delivery ID and normalized metadata in both content and key-wrap AAD; preserve v1 for old Snaps and never fall back from failed v2 authentication. |
 | Partial upload / app killed / offline | Incomplete object incorrectly marked healthy or temporary data deleted | Upload lease, durable state, retry and partial-success state; never mark healthy before read-back/authentication. Long-upload lease renewal and Drive flow are not implemented. |
 | Drive OAuth token revoked / Drive account unavailable | Backup falls behind or cannot restore | Preserve local data and last healthy version; show destination-specific degraded status; do not delete healthy versions. Drive flow not implemented. |
 | Drive quota exhausted | Future backup incomplete | Warn at agreed 80%/95%; no silent pruning; queue locally and report partial status. Not implemented. |
@@ -87,7 +87,7 @@
 ## 7. Residual risks and release gates
 
 Known open blockers:
-- No independent cryptographic review of the key hierarchy/recovery-envelope design.
+- No independent cryptographic review of the key hierarchy/recovery-envelope design or the required versioned Snap metadata-AAD migration.
 - No encryption-key recovery envelope or historical-key recovery implementation.
 - No recovery-code mechanism that can legitimately establish Supabase AAL2; backup TOTP is the supported source-level fallback.
 - Device-key revocation does not revoke the lost phone's auth session.
