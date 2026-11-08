@@ -7,7 +7,7 @@
     "start": "expo start",
     "android": "expo start --android",
     "typecheck": "tsc --noEmit",
-    "test:recovery": "node --test scripts/key-recovery-state.test.cjs scripts/secure-local-store.test.cjs scripts/snap-vault.test.cjs"
+    "test:recovery": "node --test scripts/key-recovery-state.test.cjs scripts/secure-local-store.test.cjs scripts/snap-vault.test.cjs scripts/legacy-migration.test.cjs"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
