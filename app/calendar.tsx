@@ -5,7 +5,7 @@ import { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/auth/AuthProvider";
 import { useAppStore } from "@/store/AppStore";
-import { getNotificationPermission, scheduleReminder } from "@/lib/notifications";
+import { getNotificationPermission, getNotificationState, scheduleReminder } from "@/lib/notifications";
 import {
   DEFAULT_PARTNER_TIME_ZONE,
   formatInTimeZone,
@@ -84,9 +84,13 @@ export default function ActivityCalendarScreen() {
     const syncLocalCalendarAlerts = async () => {
       if (!user?.id || !canEdit || activities.length === 0) return;
       try {
-        const permission = await getNotificationPermission();
+        const [permission, notificationState] = await Promise.all([
+          getNotificationPermission(),
+          getNotificationState(user.id),
+        ]);
         if (!permission.granted || cancelled) return;
         const now = Date.now();
+        const leadMinutes = notificationState.settings.calendarLeadMinutes;
         const horizon = now + 30 * 24 * 60 * 60 * 1000;
         const upcoming = activities
           .filter(item => {
@@ -97,7 +101,7 @@ export default function ActivityCalendarScreen() {
         for (const item of upcoming) {
           if (cancelled) return;
           const startsAt = new Date(item.starts_at).getTime();
-          const alertAt = Math.max(now + 30_000, startsAt - 15 * 60_000);
+          const alertAt = Math.max(now + 30_000, startsAt - leadMinutes * 60_000);
           try {
             await scheduleReminder(user.id, {
               category: "calendar",
