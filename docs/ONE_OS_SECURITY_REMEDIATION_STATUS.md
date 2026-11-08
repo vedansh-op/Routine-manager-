@@ -90,3 +90,12 @@ These are source changes, not verified deployed fixes. The migrations have not y
 ## Release decision
 
 ONE-OS remains **not ready for production release**. The strict security audit gate remains in force until the source changes compile and pass the complete non-production test suite, the app is integrated with the new RPCs/states, permanent-copy verification is implemented, the aggregate report schema and device recovery protocol are complete, and deployed configuration is independently verified.
+
+
+## Supplemental database-policy inventory
+
+- Added read-only audit script: `supabase/tests/one_os_database_policy_audit.sql`.
+- It inventories public-table RLS enabled/forced flags, every public-schema RLS policy (including permissive/restrictive mode and expressions), client/service-role table grants, and SECURITY DEFINER functions with effective EXECUTE access and function settings.
+- This is intentionally an inventory, not an automatic pass/fail verdict. PostgreSQL permissive policies combine with OR, so reviewers must inspect every policy on each table, not only the ONE-OS policy names.
+- Static review note: `member_presence` has RLS enabled and no client-facing SELECT policy in the migrations reviewed. That is fail-closed for ordinary client reads; confirm no app feature relies on direct presence reads and verify the deployed grants/policies in a non-production project.
+- Run this audit alongside `supabase/tests/one_os_storage_policy_audit.sql` before considering the database security review complete. No production SQL has been executed.
