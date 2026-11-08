@@ -3,9 +3,10 @@ import { Link } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useAppStore } from "@/store/AppStore";
 export default function Tasks() {
-  const { tasks, addTask, toggleTask } = useAppStore(); const [title,setTitle]=useState("");
+  const { tasks, addTask, toggleTask, canEdit, storageError } = useAppStore(); const [title,setTitle]=useState("");
   return <ScrollView style={s.page} contentContainerStyle={s.body}><Link href="/" style={s.back}>←  Home</Link><Text style={s.heading}>Tasks</Text><Text style={s.sub}>Turn intention into action.</Text>
-    <View style={s.form}><TextInput value={title} onChangeText={setTitle} onSubmitEditing={()=>{addTask(title);setTitle("");}} placeholder="Add a task…" placeholderTextColor="#777d8c" style={s.input}/><Pressable style={s.add} onPress={()=>{addTask(title);setTitle("");}}><Text style={s.addText}>Add</Text></Pressable></View>
+    <View style={s.form}><TextInput value={title} onChangeText={setTitle} editable={canEdit} onSubmitEditing={()=>{addTask(title);setTitle("");}} placeholder="Add a task…" placeholderTextColor="#777d8c" style={s.input}/><Pressable disabled={!canEdit} style={[s.add, !canEdit && { opacity: 0.45 }]} onPress={()=>{addTask(title);setTitle("");}}><Text style={s.addText}>Add</Text></Pressable></View>
+    {!canEdit ? <Text style={s.sub}>{storageError ? "Editing is paused to protect your saved data. " + storageError : "Preparing secure local storage…"}</Text> : null}
     {tasks.length===0?<Text style={s.empty}>Nothing here yet. Add your first task above.</Text>:tasks.map(t=><Pressable key={t.id} onPress={()=>toggleTask(t.id)} style={s.item}><Text style={s.check}>{t.completed?"✓":"○"}</Text><Text style={[s.task,t.completed&&s.done]}>{t.title}</Text></Pressable>)}
   </ScrollView>;
 }
