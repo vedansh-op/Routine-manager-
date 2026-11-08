@@ -322,6 +322,14 @@ export default function NotificationsScreen() {
         <Pressable onPress={() => pickTime("quiet-start")} style={s.timeButton}><Text style={s.mutedSmall}>START</Text><Text style={s.timeValue}>{clockDate(settings.quietHours.startHour, settings.quietHours.startMinute).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</Text></Pressable>
         <Pressable onPress={() => pickTime("quiet-end")} style={s.timeButton}><Text style={s.mutedSmall}>END</Text><Text style={s.timeValue}>{clockDate(settings.quietHours.endHour, settings.quietHours.endMinute).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</Text></Pressable>
       </View>
+      <Pressable disabled={busy} onPress={() => {
+        const values = [5, 10, 15, 30, 60, 120];
+        const index = values.indexOf(settings.calendarLeadMinutes);
+        void saveSettings({ calendarLeadMinutes: values[(index + 1) % values.length] });
+      }} style={s.settingRow}>
+        <View><Text style={s.settingTitle}>Calendar alert advance</Text><Text style={s.mutedSmall}>Change how early shared events alert you</Text></View>
+        <Text style={s.state}>{settings.calendarLeadMinutes} MIN</Text>
+      </Pressable>
       <Text style={s.label}>CATEGORIES</Text>
       {NOTIFICATION_CATEGORIES.map(item => <Pressable key={item} disabled={busy} onPress={() => void saveSettings({ categoryEnabled: { [item]: !settings.categoryEnabled[item] } })} style={s.settingRow}>
         <Text style={s.settingTitle}>{getNotificationCategoryLabel(item)}</Text>
