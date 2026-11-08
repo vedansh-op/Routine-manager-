@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
-import type { Factor } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
 type TotpFactor = { id: string; friendly_name?: string | null; status?: string; factor_type?: string };
@@ -14,7 +13,6 @@ export default function SecurityScreen() {
   const [secret, setSecret] = useState("");
   const [pendingFactor, setPendingFactor] = useState<TotpFactor | null>(null);
   const [code, setCode] = useState("");
-  const [challengeId, setChallengeId] = useState("");
 
   const refresh = useCallback(async () => {
     if (!supabase) { setLoading(false); return; }
@@ -43,7 +41,6 @@ export default function SecurityScreen() {
       setPendingFactor({ id: data.id, friendly_name: "ONE-OS backup authenticator", status: "unverified", factor_type: "totp" });
       setSecret(data.totp.secret);
       setCode("");
-      setChallengeId("");
     } catch (error) {
       Alert.alert("Couldn't add backup", error instanceof Error ? error.message : "Please try again.");
     } finally { setBusy(false); }
@@ -116,7 +113,7 @@ export default function SecurityScreen() {
         <Text style={s.body}>Add this as a separate account in your authenticator app. Store it somewhere separate from your primary authenticator. Then enter its current six-digit code.</Text>
         <TextInput value={code} onChangeText={v => setCode(v.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" placeholderTextColor="#777d8c" keyboardType="number-pad" maxLength={6} style={s.input}/>
         <Pressable disabled={busy || code.length !== 6} onPress={() => void verifyBackup()} style={s.primary}><Text style={s.primaryText}>{busy ? "Verifying…" : "Verify backup authenticator"}</Text></Pressable>
-        <Pressable disabled={busy} onPress={() => { setSecret(""); setPendingFactor(null); setCode(""); setChallengeId(""); void refresh(); }}><Text style={s.cancel}>Cancel setup</Text></Pressable>
+        <Pressable disabled={busy} onPress={() => { setSecret(""); setPendingFactor(null); setCode(""); void refresh(); }}><Text style={s.cancel}>Cancel setup</Text></Pressable>
       </View> : factors.length === 1 ? <Pressable disabled={busy} onPress={() => void addBackup()} style={s.primary}><Text style={s.primaryText}>{busy ? "Please wait…" : "Add backup authenticator"}</Text></Pressable> : null}
     </>}
     <Pressable onPress={() => void refresh()}><Text style={s.cancel}>Refresh factors</Text></Pressable>
