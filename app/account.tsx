@@ -55,7 +55,7 @@ export default function AccountScreen() {
       });
       if (error) throw error;
       await loadDevices();
-      Alert.alert("Device revoked", "That device can no longer receive new private Snaps or read retained Snap ciphertext. Its already-downloaded local files cannot be remotely erased.");
+      Alert.alert("Device revoked", "That device's encryption key is revoked, so it cannot receive new private Snaps or read retained Snap ciphertext. This does not end its ONE-OS login session or erase files already downloaded to it.");
     } catch (error) {
       Alert.alert("Couldn't revoke device", error instanceof Error ? error.message : "Please try again.");
     } finally {
@@ -66,7 +66,7 @@ export default function AccountScreen() {
   function confirmRevoke(device: DeviceRow) {
     Alert.alert(
       "Revoke this device?",
-      "It will lose access to future private Snaps and retained cloud deliveries. This cannot erase photos already downloaded to that device. Make sure you have access to another trusted device first.",
+      "Its photo-encryption key will be revoked. This does not sign the device out of ONE-OS or erase files already downloaded there. Make sure you have access to another trusted device first.",
       [
         { text: "Cancel", style: "cancel" },
         { text: "Revoke device", style: "destructive", onPress: () => void revokeDevice(device.device_id) },
@@ -95,7 +95,7 @@ export default function AccountScreen() {
         <Text style={s.sectionTitle}>Your devices</Text>
         <Pressable onPress={() => void loadDevices()}><Text style={s.refresh}>Refresh</Text></Pressable>
       </View>
-      <Text style={s.description}>A device listed here has a registered photo-encryption key. Revoking a lost device blocks new Snap access; it cannot erase files already saved on that phone.</Text>
+      <Text style={s.description}>A device listed here has a registered photo-encryption key. Revoking a device key blocks Snap encryption-key access. It does not yet terminate that phone's ONE-OS login session or erase files already saved there.</Text>
       {loadingDevices ? <ActivityIndicator color="#b7adff" /> : devices.length ? devices.map(device => {
         const isCurrent = device.device_id === currentDeviceId;
         const isRevoked = Boolean(device.revoked_at);
