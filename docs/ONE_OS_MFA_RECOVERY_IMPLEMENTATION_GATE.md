@@ -50,8 +50,17 @@ Do not store plaintext recovery codes in Supabase or Drive. Do not accept a clie
 
 MFA recovery is not encryption recovery. Even after the user regains an AAL2 session, historical Snap content remains undecryptable if the only copy of the recipient's X25519 private key was on the lost phone. Encryption-key recovery requires its own user-controlled recovery secret/key-wrapping design, verified partner-key continuity, and restore tests. Do not revoke the old device's key until the replacement-device recovery path has been proven, except where an emergency security decision explicitly requires immediate revocation.
 
+## Source implementation update — 8 November 2026
+
+The feature branch now contains:
+- `app/security.tsx`: lists verified TOTP factors, permits one additional backup factor when exactly one verified factor exists, shows the new setup secret during enrollment, verifies the backup with a Supabase MFA challenge, and permits removal only of the additional factor (never the last factor).
+- `app/account.tsx`: links to authenticator management.
+- `app/mfa.tsx`: offers a choice among verified factors at sign-in instead of always forcing the first factor.
+
+The UI labels the additional factor as a backup and explicitly warns that it does not recover historical encryption keys. The current implementation is source-only and has not yet been tested against a real Supabase test project or on physical Android devices. Factor ordering/naming and the exact provider behavior for adding/removing factors must be verified before release. The app currently limits its own UI to two factors even though the provider may allow more.
+
 ## Status
 
-**DESIGN GATE DOCUMENTED — NOT IMPLEMENTED OR DEPLOYED.**
+**SOURCE UI IMPLEMENTED — NOT YET VALIDATED OR DEPLOYED.**
 
-No database migration, Edge Function, Auth configuration, or production setting was changed. Next safe source task is to add backup-TOTP enrollment and factor-management UI, then test it in a disposable Supabase project. One-time recovery codes remain a release blocker until the Auth server can support the required AAL2 step-up semantics.
+No database migration, Edge Function, Auth configuration, or production setting was changed. Next steps are to complete TypeScript CI, validate enrollment/challenge/unenrollment and AAL2 behavior in a disposable Supabase project, and test on Android. One-time recovery codes remain a release blocker until the Auth server can support the required AAL2 step-up semantics. Encryption-key recovery remains a separate release blocker.
