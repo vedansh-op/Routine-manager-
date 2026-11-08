@@ -13,6 +13,7 @@ const compiled = ts.transpileModule(source, {
 const files = new Map();
 let indexValue = null;
 let failEncryption = false;
+let failIndexWrite = false;
 class Directory {
   constructor(...parts) { this.uri = parts.map(part => typeof part === "string" ? part : part.uri).join("/"); }
   create() {}
@@ -32,7 +33,7 @@ class File {
 }
 const secureStore = {
   getEncryptedItem: async () => indexValue,
-  setEncryptedItem: async (_key, _userId, value) => { indexValue = value; },
+  setEncryptedItem: async (_key, _userId, value) => { if (failIndexWrite) throw new Error("index unavailable"); indexValue = value; },
   encryptLocalBytes: async (_userId, bytes) => {
     await new Promise(resolve => setTimeout(resolve, 5));
     if (failEncryption) throw new Error("key unavailable");
@@ -100,4 +101,38 @@ test("invalid records and duplicate IDs are rejected", async () => {
     { id: "same", fileUri: "file:///two", mimeType: "image/jpeg", capturedAt: "2026-01-02T00:00:00.000Z", direction: "received" },
   ]);
   await assert.rejects(vault.getLocalSnaps("user-a"), /duplicate IDs/i);
+});
+
+
+test("retry recovers an orphaned encrypted file after index commit failure", async () => {
+  files.clear();
+  indexValue = null;
+  failIndexWrite = true;
+  await assert.rejects(
+    vault.saveLocalSnap("user-a", "delivery-recover", "image/jpeg", "2026-01-01T00:00:00.000Z", "sent", new Uint8Array([3, 4, 5])),
+    /index unavailable/i,
+  );
+  failIndexWrite = false;
+  const recovered = await vault.saveLocalSnap("user-a", "delivery-recover", "image/jpeg", "2026-01-01T00:00:00.000Z", "sent", new Uint8Array([3, 4, 5]));
+  assert.equal((await vault.getLocalSnaps("user-a"))[0].id, "delivery-recover");
+  assert.deepEqual(Array.from(await vault.readLocalSnap("user-a", recovered)), [3, 4, 5]);
+});
+
+test("mismatched orphaned file is preserved and never indexed", async () => {
+  files.clear();
+  indexValue = null;
+  failIndexWrite = true;
+  await assert.rejects(
+    vault.saveLocalSnap("user-a", "delivery-orphan", "image/jpeg", "2026-01-01T00:00:00.000Z", "sent", new Uint8Array([1, 2])),
+    /index unavailable/i,
+  );
+  failIndexWrite = false;
+  const orphanPath = "/documents/oneos-private-snaps/user-a/delivery-orphan.enc";
+  const before = Array.from(files.get(orphanPath));
+  await assert.rejects(
+    vault.saveLocalSnap("user-a", "delivery-orphan", "image/jpeg", "2026-01-01T00:00:00.000Z", "sent", new Uint8Array([9, 9])),
+    /different contents/i,
+  );
+  assert.deepEqual(Array.from(files.get(orphanPath)), before);
+  assert.equal(await vault.getLocalSnaps("user-a").then(items => items.length), 0);
 });
