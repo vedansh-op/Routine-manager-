@@ -24,9 +24,12 @@ export default function MfaScreen() {
       if (assurance.currentLevel === "aal2") { router.replace("/"); return; }
       const { data, error } = await supabase.auth.mfa.listFactors();
       if (error) throw error;
-      const verified = (data.totp ?? []).find(item => item.status === "verified");
-      if (verified) {
-        setFactor(verified);
+      // Reuse a pending factor instead of creating another enrollment. A pending
+      // factor may exist if the app was closed before its first code was verified.
+      const existing = (data.totp ?? []).find(item => item.status === "verified")
+        ?? (data.totp ?? []).find(item => item.status === "unverified");
+      if (existing) {
+        setFactor(existing);
         setStage("verify");
       } else {
         setFactor(null);
@@ -76,6 +79,9 @@ export default function MfaScreen() {
       const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
       if (assuranceError) throw assuranceError;
       if (assurance.currentLevel !== "aal2") throw new Error("The session has not reached the required security level. Try a fresh code.");
+      setSecret("");
+      setCode("");
+      setChallengeId("");
       router.replace("/");
     } catch (error) {
       setChallengeId("");
@@ -99,6 +105,7 @@ export default function MfaScreen() {
         <View style={s.card}><Text style={s.body}>Install an authenticator app, then set up a time-based code for ONE-OS. Your private data stays protected until this step is complete.</Text></View>
         <Pressable disabled={busy} onPress={beginEnrollment} style={s.primary}><Text style={s.primaryText}>{busy ? "Please wait…" : "Set up authenticator"}</Text></Pressable>
       </> : <>
+        {factor?.status === "unverified" && !secret ? <View style={s.card}><Text style={s.body}>A setup was started earlier but not completed. Use the authenticator entry created during that setup. If you no longer have its setup key, the account recovery and factor-reset flow is not available yet; do not create another factor.</Text></View> : null}
         {secret ? <View style={s.card}>
           <Text style={s.label}>SETUP KEY</Text>
           <Text selectable style={s.secret}>{secret}</Text>
