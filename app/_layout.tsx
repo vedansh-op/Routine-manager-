@@ -20,7 +20,7 @@ Notifications.setNotificationHandler({
 
 function SessionGate() {
   const { configured, loading, session, recovery, user } = useAuth();
-  const { canEdit, tasks, habits, completions, toggleTask, toggleHabitToday } = useAppStore();
+  const { canEdit, tasks, habits, routines, completions, toggleTask, toggleHabitToday, completeRoutine } = useAppStore();
   const segments = useSegments();
   const router = useRouter();
   const route = segments[0];
@@ -100,6 +100,18 @@ function SessionGate() {
             } else {
               await completeReminder(user.id, data.reminderId);
             }
+          } else if (category === "routine" && (typeof data.sourceKey === "string" || typeof data.parentReminderId === "string")) {
+            const match = typeof data.sourceKey === "string" ? data.sourceKey.match(/^routine:([^:]+):/) : null;
+            const routine = routines.find(item =>
+              (match && item.id === match[1]) ||
+              (typeof data.parentReminderId === "string" && (item.reminderIds ?? []).includes(data.parentReminderId)),
+            );
+            if (routine) {
+              const completed = await completeRoutine(routine.id);
+              if (!completed) throw new Error("The routine could not be completed; its remaining alerts may still be active.");
+            } else {
+              await completeReminder(user.id, data.reminderId);
+            }
           } else if (category === "habit" && (typeof data.sourceKey === "string" || typeof data.parentReminderId === "string")) {
             const match = typeof data.sourceKey === "string" ? data.sourceKey.match(/^habit:([^:]+):/) : null;
             const habit = habits.find(item =>
@@ -168,7 +180,7 @@ function SessionGate() {
       receivedSubscription.remove();
       subscription.remove();
     };
-  }, [user?.id, canEdit, router, tasks, habits, completions, toggleTask, toggleHabitToday]);
+  }, [user?.id, canEdit, router, tasks, habits, routines, completions, toggleTask, toggleHabitToday, completeRoutine]);
 
   const [assuranceReady, setAssuranceReady] = useState(false);
   const [aal2, setAal2] = useState(false);
