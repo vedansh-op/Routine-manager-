@@ -1,9 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { AppState } from "react-native";
 import { useAuth } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
-import { ensureDeviceCryptoKey } from "@/lib/deviceCrypto";
 import { getEncryptedItem, initializeUserKeyForFreshInstall, setEncryptedItem } from "@/lib/secureLocalStore";
 import { inspectLocalEncryptedData } from "@/lib/keyRecoveryRegistry";
 import { classifyRecoveryBootstrapState } from "@/lib/keyRecoveryState";
@@ -42,7 +40,6 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [storageUnlocked, setStorageUnlocked] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
 
-  // Presence is server-observed only. An offline device updates this when it next reconnects and foregrounds ONE-OS.
   useEffect(() => {
     if (!userId || !supabase) return;
     const client = supabase;
