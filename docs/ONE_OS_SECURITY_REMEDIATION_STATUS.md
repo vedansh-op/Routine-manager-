@@ -121,7 +121,7 @@ ONE-OS remains **not ready for production release**. The strict security audit g
 
 | Finding | Source change | Status |
 |---|---|---|
-| AUTH-01 — client-only MFA gate | Added `supabase/migrations/202611080012_require_aal2_for_sensitive_writes.sql` with a database trigger guard requiring an AAL2 JWT for authenticated writes to shared-space lifecycle, membership, invitations, device keys, Snap deliveries, shared calendar activities, and weekly reports. The existing `end_shared_connection` RPC already requires AAL2. | **Source guard added.** It has not been executed by PostgreSQL. Validate AAL1 rejection, AAL2 success, personal-space behavior, and service-role maintenance in non-production. Inventory all remaining SECURITY DEFINER functions and Edge Functions; this is not yet proof of complete coverage. |
+| AUTH-01 — client-only MFA gate | Added `supabase/migrations/202611080012_require_aal2_for_sensitive_writes.sql` with a database trigger guard requiring an AAL2 JWT for authenticated writes to shared-space lifecycle, membership, invitations, device keys, Snap deliveries, shared calendar activities, and weekly reports. The existing `end_shared_connection` RPC already requires AAL2. The `ack-snap` Edge Function now verifies the caller's email and AAL2 before using its service-role client; the expiry Edge Function remains restricted to the cron secret. | **Source guard added.** It has not been executed by PostgreSQL. Validate AAL1 rejection, AAL2 success, personal-space behavior, and service-role maintenance in non-production. Inventory all remaining SECURITY DEFINER functions and Storage paths; this is not yet proof of complete coverage. |
 | AUTH-02 — unverified email sessions | Added `app/verify-email.tsx` with resend and refresh/recheck actions. `app/_layout.tsx` routes sessions without `email_confirmed_at` to verification before MFA or protected screens. | **Client guard added.** Supabase Confirm Email settings, templates, redirect allow-list and server-side behavior remain unverified. |
 
 New/updated authentication files:
@@ -129,5 +129,6 @@ New/updated authentication files:
 - `app/verify-email.tsx`
 - `app/_layout.tsx`
 - `docs/ONE_OS_AUTH_SESSION_AUDIT.md`
+- `supabase/functions/ack-snap/index.ts`
 
 These changes remain source-only. No Supabase migration has been executed, no project Auth setting has been changed, and no production deployment has occurred.
