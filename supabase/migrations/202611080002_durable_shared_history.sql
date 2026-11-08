@@ -55,12 +55,12 @@ grant select on public.shared_archives, public.shared_archive_participants,
 
 create or replace function public.is_shared_archive_participant(p_archive_id uuid)
 returns boolean language sql stable security definer set search_path = ''
-as $
+as $archive_fn$
   select exists (
     select 1 from public.shared_archive_participants p
     where p.archive_id=p_archive_id and p.user_id=(select auth.uid())
   );
-$;
+$archive_fn$;
 revoke all on function public.is_shared_archive_participant(uuid) from public;
 grant execute on function public.is_shared_archive_participant(uuid) to authenticated;
 
@@ -88,7 +88,7 @@ on conflict (source_space_id) do nothing;
 -- row is inserted by create_shared_space().
 create or replace function public.create_shared_archive_for_space()
 returns trigger language plpgsql security definer set search_path = ''
-as $
+as $archive_fn$
 begin
   if new.space_type = 'shared' then
     insert into public.shared_archives(source_space_id)
