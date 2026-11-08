@@ -9,7 +9,7 @@ import { migrateLegacyRecordForUser } from "@/lib/legacyMigration";
 import { cancelReminder } from "@/lib/notifications";
 
 export type Task = { id: string; title: string; notes?: string; dueDate?: string; reminderId?: string; reminderIds?: string[]; completed: boolean; createdAt: string };
-export type Habit = { id: string; title: string; createdAt: string; archived: boolean; reminderId?: string; reminderTime?: string };
+export type Habit = { id: string; title: string; createdAt: string; archived: boolean; reminderId?: string; reminderIds?: string[]; reminderTime?: string; reminderDays?: number[] };
 type Store = {
   tasks: Task[];
   habits: Habit[];
@@ -22,7 +22,7 @@ type Store = {
   setTaskReminder: (id: string, reminderIds: string[], dueDate: string) => void;
   addHabit: (title: string) => void;
   toggleHabitToday: (id: string) => void;
-  setHabitReminder: (id: string, reminderId: string | null, reminderTime?: string) => void;
+  setHabitReminder: (id: string, reminderIds: string[] | null, reminderTime?: string, reminderDays?: number[]) => void;
 };
 const keyForUser = (userId: string) => "one-os-v2:" + userId;
 const migratedKey = (userId: string) => "one-os-v2-migrated:" + userId;
@@ -173,10 +173,10 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setCompletions(old => old.includes(key) ? old.filter(x => x !== key) : [...old, key]);
   }, [storageUnlocked, ready, activeUserId, userId]);
 
-  const setHabitReminder = useCallback((id: string, reminderId: string | null, reminderTime?: string) => {
+  const setHabitReminder = useCallback((id: string, reminderIds: string[] | null, reminderTime?: string, reminderDays?: number[]) => {
     if (!storageUnlocked || !ready || activeUserId !== userId) return;
     setHabits(old => old.map(item => item.id === id
-      ? { ...item, reminderId: reminderId ?? undefined, reminderTime: reminderId ? reminderTime : undefined }
+      ? { ...item, reminderIds: reminderIds ?? undefined, reminderId: reminderIds?.[0], reminderTime: reminderIds?.length ? reminderTime : undefined, reminderDays: reminderIds?.length ? reminderDays : undefined }
       : item));
   }, [storageUnlocked, ready, activeUserId, userId]);
 
