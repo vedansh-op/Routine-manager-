@@ -61,6 +61,7 @@ function SessionGate() {
         route?: unknown;
         category?: unknown;
         sourceKey?: unknown;
+        parentReminderId?: unknown;
         repeatKind?: unknown;
       };
       if (!user?.id || !canEdit) return;
@@ -86,17 +87,25 @@ function SessionGate() {
           return;
         }
         if (response.actionIdentifier === "DONE") {
-          if (category === "task" && typeof data.sourceKey === "string") {
-            const match = data.sourceKey.match(/^task:([^:]+):lead:/);
-            const task = match ? tasks.find(item => item.id === match[1]) : undefined;
+          if (category === "task" && (typeof data.sourceKey === "string" || typeof data.parentReminderId === "string")) {
+            const match = typeof data.sourceKey === "string" ? data.sourceKey.match(/^task:([^:]+):lead:/) : null;
+            const task = tasks.find(item =>
+              (match && item.id === match[1]) ||
+              (typeof data.parentReminderId === "string" &&
+                (item.reminderIds ?? (item.reminderId ? [item.reminderId] : [])).includes(data.parentReminderId)),
+            );
             if (task && !task.completed) {
               await toggleTask(task.id);
             } else {
               await completeReminder(user.id, data.reminderId);
             }
-          } else if (category === "habit" && typeof data.sourceKey === "string") {
-            const match = data.sourceKey.match(/^habit:([^:]+):/);
-            const habit = match ? habits.find(item => item.id === match[1]) : undefined;
+          } else if (category === "habit" && (typeof data.sourceKey === "string" || typeof data.parentReminderId === "string")) {
+            const match = typeof data.sourceKey === "string" ? data.sourceKey.match(/^habit:([^:]+):/) : null;
+            const habit = habits.find(item =>
+              (match && item.id === match[1]) ||
+              (typeof data.parentReminderId === "string" &&
+                (item.reminderIds ?? (item.reminderId ? [item.reminderId] : [])).includes(data.parentReminderId)),
+            );
             if (habit) {
               const completionKey = habit.id + ":" + todayKey();
               if (!completions.includes(completionKey)) toggleHabitToday(habit.id);
