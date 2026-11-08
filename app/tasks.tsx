@@ -72,6 +72,10 @@ export default function Tasks() {
           await cancelReminder(user.id, reminder.id);
         }
       }
+      const previousIds = task.reminderIds ?? (task.reminderId ? [task.reminderId] : []);
+      for (const previousId of previousIds) {
+        if (!activeIds.includes(previousId)) await cancelReminder(user.id, previousId).catch(() => undefined);
+      }
       setTaskReminder(task.id, activeIds, dueAt.toISOString());
 
       if (skippedPastLead) {
