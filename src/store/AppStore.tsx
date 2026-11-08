@@ -41,33 +41,6 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [storageError, setStorageError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!userId || !supabase) return;
-    const client = supabase;
-    let active = true;
-    const heartbeat = async () => {
-      if (!active) return;
-      const { error } = await client.rpc("touch_my_presence");
-      if (error && active) console.info("ONE-OS presence sync unavailable:", error.message);
-    };
-    void heartbeat();
-    void ensureDeviceCryptoKey(userId).catch(error => {
-      if (active) console.info("ONE-OS device-key registration unavailable:", error instanceof Error ? error.message : error);
-    });
-    const subscription = AppState.addEventListener("change", state => {
-      if (state === "active") void heartbeat();
-    });
-    // Keep a foreground app alive for the server-side 72-hour inactivity clock.
-    const heartbeatInterval = setInterval(() => {
-      if (AppState.currentState === "active") void heartbeat();
-    }, 15 * 60 * 1000);
-    return () => {
-      active = false;
-      subscription.remove();
-      clearInterval(heartbeatInterval);
-    };
-  }, [userId]);
-
-  useEffect(() => {
     let cancelled = false;
     setReady(false);
     setStorageUnlocked(false);
