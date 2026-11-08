@@ -131,7 +131,9 @@ export default function SnapMemoriesScreen() {
         .select("id,space_id,sender_id,recipient_id,object_path,status,ephemeral_public_key,wrap_salt,wrap_nonce,wrapped_file_key,content_nonce,mime_type,file_size_bytes,captured_at")
         .eq("recipient_id", user.id)
         .eq("recipient_device_id", key.deviceId)
-        .eq("status", "pending")
+        // Keep downloaded-but-not-permanently-backed-up deliveries recoverable.
+        // The encrypted server copy is intentionally retained until Drive proof exists.
+        .in("status", ["pending", "downloaded"])
         .order("created_at", { ascending: true });
       if (error) throw error;
       setPending((data ?? []) as PendingSnap[]);
