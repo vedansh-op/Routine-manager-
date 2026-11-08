@@ -7,6 +7,7 @@ on:
     paths:
       - "app/**"
       - "src/**"
+      - "scripts/**"
       - "package.json"
       - "tsconfig.json"
       - ".github/workflows/typecheck.yml"
@@ -44,3 +45,6 @@ jobs:
 
       - name: Run TypeScript validation
         run: npm run typecheck
+
+      - name: Run recovery-state tests
+        run: npm run test:recovery
