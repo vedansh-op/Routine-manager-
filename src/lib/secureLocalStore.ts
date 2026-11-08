@@ -140,11 +140,17 @@ export async function setEncryptedItem(storageKey: string, userId: string, value
 export async function encryptLocalBytes(userId: string, plaintext: Uint8Array): Promise<Uint8Array> {
   const key = await getUserKey(userId);
   const nonce = getRandomBytes(24);
-  const ciphertext = xchacha20poly1305(key, nonce).encrypt(plaintext);
-  const packed = new Uint8Array(nonce.length + ciphertext.length);
-  packed.set(nonce, 0);
-  packed.set(ciphertext, nonce.length);
-  return packed;
+  let ciphertext: Uint8Array | null = null;
+  try {
+    ciphertext = xchacha20poly1305(key, nonce).encrypt(plaintext);
+    const packed = new Uint8Array(nonce.length + ciphertext.length);
+    packed.set(nonce, 0);
+    packed.set(ciphertext, nonce.length);
+    return packed;
+  } finally {
+    nonce.fill(0);
+    ciphertext?.fill(0);
+  }
 }
 
 export async function decryptLocalBytes(userId: string, packed: Uint8Array): Promise<Uint8Array> {
