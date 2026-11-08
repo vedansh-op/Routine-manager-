@@ -59,13 +59,14 @@ export default function RoutinesScreen() {
     }
     setBusyId(routineId);
     const prefix = "routine:" + routine.id + ":";
-    const previousState = await getNotificationState(user.id);
-    const previousByKey = new Map(previousState.reminders
-      .filter(item => item.sourceKey?.startsWith(prefix))
-      .map(item => [item.sourceKey as string, item]));
+    let previousByKey = new Map<string, import("@/lib/notifications").Reminder>();
     const newIds: string[] = [];
     const scheduledKeys = new Set<string>();
     try {
+      const previousState = await getNotificationState(user.id);
+      previousByKey = new Map(previousState.reminders
+        .filter(item => item.sourceKey?.startsWith(prefix))
+        .map(item => [item.sourceKey as string, item]));
       let elapsedMinutes = 0;
       for (let index = 0; index < routine.steps.length; index += 1) {
         const step = routine.steps[index];
