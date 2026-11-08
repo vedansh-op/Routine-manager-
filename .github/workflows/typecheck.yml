@@ -49,3 +49,6 @@ jobs:
 
       - name: Run recovery-state tests
         run: npm run test:recovery
+
+      - name: Run notification-state tests
+        run: npm run test:notifications
