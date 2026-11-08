@@ -84,20 +84,25 @@ Location reminders require a dedicated privacy review, foreground/background per
 - One-time, daily and weekly local reminders are schedulable.
 - Quiet hours shift one-time reminders to the next quiet-hours end; repeating reminders are rejected when their selected time falls in quiet hours.
 - Category and master switches cancel/reschedule pending local reminders.
-- Notification actions support snooze 10 minutes, mark reminder done, and open the relevant screen.
-- A Notifications screen exposes permission state, category controls, quiet hours, sound/vibration preferences, reminder creation, snoozing and removal.
+- Notification actions support snooze 10 minutes, mark reminder done, and open the relevant screen. Snoozing a recurring reminder creates a separate one-time alert and preserves its recurring schedule.
+- Task rows can schedule a one-time deadline alert; completing a task cancels its linked alert.
+- Habits can schedule a daily local check-in alert.
+- Upcoming shared calendar events are reconciled into local alerts 15 minutes before start, for events within the next 30 days (up to 40 events per sync). Stable source keys prevent duplicates on refresh.
+- Encrypted notification history records foreground deliveries and notification actions (OS delivery history is incomplete when Android does not run the app listener in the background).
+- On sign-out/account change, scheduled alerts are reconciled so alerts belonging to another account are cancelled; stale, duplicate and expired scheduled alerts are cleaned up.
+- A Notifications screen exposes permission state, category controls, quiet hours, sound/vibration preferences, reminder creation, snoozing, removal and recent activity.
 
 These are source-level features; CI and real-device behavior still need verification. Android may apply OEM battery restrictions. The local notification layer is not a server push system.
 
 ## 5. Remaining integration work
 
-- Add due date / reminder lead-time fields to tasks and ensure task completion/deletion cancels the linked reminder.
-- Add habit reminder preferences and calculate next eligible days from the habit schedule.
-- Implement routine model and step timing before routine-transition notifications.
-- Reconcile shared-calendar events into local reminders for each member independently.
+- Extend task reminders to support multiple lead times, recurring due dates, editing and full lifecycle cancellation (the current task flow sets one custom due-time alert).
+- Make habit reminders completion-aware so a completed habit does not produce an unnecessary alert later that day; define next-eligible-day and streak rules.
+- Implement a routine model and step timing before routine-transition notifications.
+- Add calendar alert lead-time preferences, event deletion cancellation and durable per-member reconciliation.
 - Add source-item IDs and an idempotent reconciliation job so repeated app opens never duplicate reminders.
-- Implement notification history and missed/delayed state.
-- Add daily briefing, evening review, focus and streak rules.
+- Extend notification history with missed/delayed state and reliable background delivery reconciliation.
+- Add automatic daily briefing, evening review, focus-session and streak rules.
 - Add priority/grouping/deduplication and smart frequency limits.
 - Implement remote push with test-only credentials/project first; no production secrets or deployment during this phase.
 - Implement location and travel handling with explicit permission and privacy review.
