@@ -139,3 +139,10 @@ These changes remain source-only. No Supabase migration has been executed, no pr
 - Extended `supabase/tests/one_os_database_policy_audit.sql` with a read-only inventory of all `require_aal2_%` triggers, enabled/disabled state, trigger definitions, and all non-internal triggers on public application tables.
 - This is a review aid, not an automatic proof of safe coverage. In non-production, compare the expected guarded tables with the live results and inspect every user-writable table and SECURITY DEFINER routine.
 - The MFA migration remains unexecuted. Do not mark server-side MFA complete until PostgreSQL applies it cleanly and tests show AAL1 rejection, AAL2 success, personal-space behavior, and service-role job compatibility.
+
+
+### AUTH-06 implementation review correction
+
+- The AAL2 trigger function is `SECURITY DEFINER` with an empty `search_path`, fully schema-qualified table references, and EXECUTE revoked from `PUBLIC`, `anon`, and `authenticated`.
+- This is intentional: membership insertion can occur before the joining user is allowed to SELECT the target space under RLS. An invoker-security trigger could see no row and incorrectly treat the space as personal. The definer function performs only the minimal space-type lookup and AAL2 decision.
+- Non-production validation must confirm the function owner bypasses RLS as intended, the trigger still reads the caller's JWT claims, and no direct client EXECUTE privilege is present.
