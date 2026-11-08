@@ -271,3 +271,86 @@ This is not a reason to change v1 in place: old deliveries and older app builds 
 - Obtain independent cryptographic review of the AAD encoding, key separation and migration/compatibility protocol before implementation.
 
 **Status: OPEN — design requirement documented in `docs/ONE_OS_PHASE_1_SCHEMA_AND_ARCHIVE_SPEC.md`; not implemented in source or database.**
+
+
+## Final source-level database object inventory — migrations 001–013
+
+**Review date:** 9 November 2026  
+**Scope:** Static inventory of the 18 checked-in migration files on the Phase 1 branch. Later migrations replace several earlier policy definitions; the tables below describe the expected final source state after applying all migrations in timestamp order. This is not a live Supabase catalog query, PostgreSQL compilation result, or effective-grant proof.
+
+### RLS policies expected after all checked-in migrations
+
+| Object | Final source policy name | Operation / intended access | Static review note |
+|---|---|---|---|
+| `public.profiles` | Users can read their own profile | SELECT own row | Owner-scoped by `auth.uid() = id`. |
+| `public.profiles` | Users can insert their own profile | INSERT own row | Owner-scoped check. |
+| `public.profiles` | Users can update their own profile | UPDATE own row | Owner-scoped using/check. |
+| `public.spaces` | Members can view their spaces | SELECT member rows | Uses `is_space_member`; client writes remain RPC-only. |
+| `public.space_members` | Members can view space membership | SELECT own-space membership | Uses `is_space_member`; no client write policy. |
+| `public.weekly_reports` | Users can read their own weekly reports | SELECT own report | Owner-scoped. |
+| `public.weekly_reports` | Partners can read explicitly shared weekly reports | SELECT opted-in report of active two-person shared-space partner | Migration 001 policy is replaced by migration 001 security remediation; final policy joins `spaces`, requires `space_type='shared'` and exactly two members. |
+| `public.weekly_reports` | Users can create their own weekly reports | INSERT own report | Owner-scoped; database trigger enforces aggregate-only schema and AAL2 on authenticated writes. |
+| `public.weekly_reports` | Users can update their own weekly reports | UPDATE own report | Owner-scoped; aggregate validation and AAL2 trigger also apply. |
+| `public.weekly_reports` | Users can delete their own weekly reports | DELETE own report | Owner-scoped; AAL2 trigger applies. |
+| `public.shared_activities` | Members can read activities in shared spaces | SELECT rows in actual shared spaces | Replaces the broader original read policy; ended shared history remains readable under the selected policy. |
+| `public.shared_activities` | Members can add shared activities | INSERT while member and archive is not ended | Creator must be `auth.uid()`; membership and active archive required; daily limit and AAL2 triggers also apply. |
+| `public.shared_activities` | Creators can edit their shared activities | UPDATE own row while shared space remains active | Creator/member/active archive checks plus immutable identity/space trigger; AAL2 trigger applies. |
+| `public.shared_activities` | Creators can delete their shared activities | DELETE own row while shared space remains active | Creator/member/active archive checks; archive trigger preserves deletion history; AAL2 trigger applies. |
+| `public.device_crypto_keys` | Users can read own and active two-person shared device public keys | SELECT own keys and active partner public keys | Replaces original broad co-member policy; excludes revoked partner keys, personal/ended/non-two-member spaces. Direct client writes are revoked; narrow registration/revocation RPCs are used. |
+| `public.snap_deliveries` | Participants can read snap delivery metadata | SELECT as sender or recipient | Direct client writes are revoked; RLS/storage access must be considered with active membership, device revocation and status checks. |
+| `public.shared_archives` | Archive participants can read their shared archive | SELECT archive participant's row | Detached from live membership; RLS participant predicate. |
+| `public.shared_archive_participants` | Archive participants can read archive membership | SELECT authorized archive membership | Participant-scoped; intended to preserve read-only history. |
+| `public.shared_archive_activities` | Archive participants can read shared history | SELECT authorized archived activity | Participant-scoped, no client write policies. |
+| `storage.objects` / private bucket `oneos-private-snaps` | ONE-OS sender can upload encrypted snap | INSERT own delivery object while status is uploading | Exact object path and sender binding; bucket is intended private. |
+| `storage.objects` / private bucket `oneos-private-snaps` | ONE-OS recipient can download pending or downloaded encrypted snap | SELECT exact retained delivery addressed to caller's active device | Replaces the original pending-only policy; checks recipient identity, matching non-revoked device and pending/downloaded status. |
+
+**Count:** 21 final policies across the application and Storage objects. This count is limited to explicit policies in the checked-in migrations. It does not include policies or grants configured manually in a hosted project or inherited platform defaults.
+
+### Default-deny / server-only objects
+
+The checked-in source expects these objects not to expose general client policies or direct writes:
+- `public.space_invitations`: invitation lifecycle only through narrow invitation RPCs.
+- `public.member_presence`: no client-facing row policy; presence updates through `touch_my_presence()`.
+- `public.invitation_attempt_limits`: abuse-throttle metadata revoked from `anon` and `authenticated`.
+- `public.shared_activity_daily_limits`: write-limit state revoked from `anon` and `authenticated`.
+- `public.shared_archives`, `public.shared_archive_participants`, and `public.shared_archive_activities`: broad table privileges are revoked then only SELECT is granted to authenticated users with participant RLS.
+- `public.device_crypto_keys` and `public.snap_deliveries`: direct client INSERT/UPDATE/DELETE are revoked; function-based operations are used.
+- `storage.objects`: no broad public bucket read is intended; only the two named private-bucket policies are added by this product's migrations.
+
+### SECURITY DEFINER inventory
+
+The final source contains 23 SECURITY DEFINER functions. Every declaration is reviewed in source with `SET search_path = ''`; this reduces search-path hijacking risk but is not a substitute for checking function owner, all schema references, effective EXECUTE grants, trigger call paths and deployed definitions in PostgreSQL.
+
+| Function | Intended caller / role | Static review responsibility |
+|---|---|---|
+| `public.handle_new_user()` | Auth-user insert trigger only | Creates the caller's profile from Auth metadata; trigger-only, client EXECUTE revoked by migration 005. |
+| `public.is_space_member(uuid)` | Authenticated RLS/RPC predicate | Returns only a membership boolean; narrow SECURITY DEFINER predicate. |
+| `public.create_shared_space(text)` | Authenticated RPC | Creates shared space and invitation under user identity and membership constraints. |
+| `public.join_shared_space(text)` | Authenticated RPC | Consumes invitation under row locks, limits membership and rate-checks the caller. |
+| `public.rotate_shared_invite()` | Authenticated owner RPC | Invalidates/replaces invitation for the caller's own shared space. |
+| `public.seed_member_presence()` | Membership insert trigger only | Seeds presence; client EXECUTE revoked by migration 005. |
+| `public.touch_my_presence()` | Authenticated RPC | Updates only caller's presence/device heartbeat. |
+| `public.register_device_crypto_key(text,text)` | Authenticated RPC | Registers caller's device public key; must remain insert-only for a device ID. |
+| `public.create_snap_delivery(...)` | Authenticated RPC | Creates pending upload metadata; requires sender/recipient/membership/device validations. |
+| `public.finalize_snap_upload(uuid)` | Authenticated RPC | Finalizes caller's upload after checking object existence/path ownership. |
+| `public.is_shared_archive_participant(uuid)` | Authenticated RLS predicate | Returns only whether the caller belongs to a detached archive. |
+| `public.create_shared_archive_for_space()` | Shared-space insert trigger only | Creates detached archive metadata; client EXECUTE revoked by migration 005. |
+| `public.mirror_shared_activity_to_archive()` | Shared-activity change trigger only | Mirrors insert/update/delete into durable calendar history; client EXECUTE revoked. |
+| `public.mirror_shared_member_to_archive()` | Membership change trigger only | Maintains detached participant links; client EXECUTE revoked. |
+| `public.end_shared_connection(uuid,text)` | Authenticated AAL2 RPC | Ends only caller's shared connection after exact confirmation; stops future shared writes. |
+| `public.reject_writes_to_ended_shared_space()` | Invitation/Snap insert triggers only | Rejects new writes after archive termination; client EXECUTE revoked. |
+| `public.renew_snap_upload_lease(uuid)` | Authenticated sender RPC | Renews only caller-owned active upload lease. |
+| `public.claim_expired_snap_deliveries(timestamptz,integer)` | `service_role` cleanup job only | Transactionally claims expired deliveries; EXECUTE revoked from public/anon/authenticated and granted to service_role. |
+| `public.finish_snap_expiry(uuid,boolean)` | `service_role` cleanup job only | Finalizes retryable expiry/Storage cleanup; EXECUTE restricted to service_role. |
+| `public.enforce_shared_activity_daily_limit()` | Shared-activity insert trigger only | Applies per-user daily write cap; client EXECUTE revoked by migration 005. |
+| `public.require_aal2_for_sensitive_write()` | Sensitive-table triggers only | Enforces AAL2 for authenticated writes across the listed shared, key, Snap, calendar and report tables; client EXECUTE revoked. |
+| `public.revoke_device_crypto_key(text)` | Authenticated owner AAL2 RPC | Revokes only caller-owned device key; does not revoke that device's Auth session. |
+| `public.require_active_recipient_device_for_snap()` | Snap insert trigger only | Rejects delivery to missing or revoked recipient device; client EXECUTE revoked. |
+
+### Additional trigger functions that are not SECURITY DEFINER
+
+The following source functions are ordinary invoker-security trigger functions, not included in the 23 SECURITY DEFINER count: `set_updated_at()`, `prevent_shared_activity_scope_change()`, `require_active_shared_space_for_snap()`, and `enforce_shared_space_membership_limit()`. They still need their trigger context, caller privileges, table RLS and behavior tested; the function type alone is not a security pass.
+
+### Important grant caveat
+
+The migrations explicitly revoke/grant several function privileges, including authenticated RPCs, trigger-only functions and service-role cleanup functions. That text describes intended source grants only. Existing default privileges, object ownership, manually added grants, extension/schema access and migrations deployed outside this repository can change the effective permission set. The read-only catalog script must be run against the disposable project and compared with this inventory. There is no verified hosted-project catalog snapshot for this review.
