@@ -248,3 +248,26 @@ All reviewed SECURITY DEFINER RPCs in migration 0005 and membership RPCs in migr
 - No Edge Function was deployed or invoked.
 - No user data or production secrets were accessed.
 - No claim is made that the live Supabase project currently has exactly these policies or function definitions.
+
+
+
+## Supplemental finding — Snap metadata authentication
+
+### SEC-21 — Snap AEAD does not bind delivery-row metadata as associated data
+
+**Priority: Medium — cryptographic context integrity / replay confusion**
+
+The current `src/lib/snapCrypto.ts` authenticates Snap ciphertext and its wrapped random file key with XChaCha20-Poly1305, but the v1 AEAD calls do not supply associated data. Delivery fields such as `space_id`, `sender_id`, `recipient_id`, `recipient_device_id`, `mime_type`, `captured_at` and declared plaintext size are stored separately and are not cryptographically bound to the payload. Database authorization and RLS checks are still required, but they do not provide ciphertext-level binding between those fields and the encrypted bytes.
+
+This is not a reason to change v1 in place: old deliveries and older app builds must remain readable, and changing AAD silently would make existing records undecryptable.
+
+**Required fix**
+- Define an explicit v2 envelope and SQL version column. Preserve a v1 decrypt-only compatibility path for existing rows.
+- Allocate a stable delivery UUID before encryption and use a new unambiguous v2 creation RPC that derives the sender from the authenticated session and validates ID uniqueness.
+- Define a canonical versioned length-prefixed AAD encoding. Bind the v2 content AEAD to delivery ID, space, sender, recipient, recipient device, normalized MIME type, capture instant and plaintext byte length.
+- Bind wrapped-file-key AEAD with a separate domain tag and delivery/recipient/device context plus recipient-key fingerprint and ephemeral key context.
+- Route decryption strictly by version. A failed v2 authentication must never fall back to v1.
+- Test metadata tampering, cross-delivery replay, wrong-device context, duplicate delivery IDs, and historical v1 decryption.
+- Obtain independent cryptographic review of the AAD encoding, key separation and migration/compatibility protocol before implementation.
+
+**Status: OPEN — design requirement documented in `docs/ONE_OS_PHASE_1_SCHEMA_AND_ARCHIVE_SPEC.md`; not implemented in source or database.**
