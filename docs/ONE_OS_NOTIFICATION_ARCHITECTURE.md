@@ -86,7 +86,7 @@ Location reminders require a dedicated privacy review, foreground/background per
 - Category and master switches cancel/reschedule pending local reminders.
 - Notification actions support snooze 10 minutes, mark reminder done, and open the relevant screen. Snoozing a recurring reminder creates a separate one-time alert and preserves its recurring schedule.
 - Task rows can schedule multiple deadline alerts (1 hour, 30 minutes, 15 minutes, 5 minutes and/or at the due time); selections are idempotently linked by task ID, and completing a task cancels every linked alert.
-- Habits can schedule a daily local check-in alert.
+- Habits can schedule local check-ins every day or on individually selected weekdays; reminders use stable habit source keys and can be changed or removed.
 - Upcoming shared calendar events are reconciled into local alerts 15 minutes before start, for events within the next 30 days (up to 40 events per sync). Stable source keys prevent duplicates on refresh.
 - Encrypted notification history records foreground deliveries and notification actions (OS delivery history is incomplete when Android does not run the app listener in the background).
 - On sign-out/account change, scheduled alerts are reconciled so alerts belonging to another account are cancelled; stale, duplicate and expired scheduled alerts are cleaned up.
