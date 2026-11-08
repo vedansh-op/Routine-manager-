@@ -33,7 +33,8 @@ alter table public.snap_deliveries
   add column if not exists downloaded_at timestamptz,
   add column if not exists permanent_copy_verified_at timestamptz,
   add column if not exists upload_lease_expires_at timestamptz not null default (now() + interval '24 hours'),
-  add column if not exists expiry_claimed_at timestamptz,\n  add column if not exists expiry_previous_status text,
+  add column if not exists expiry_claimed_at timestamptz,
+  add column if not exists expiry_previous_status text,
   add column if not exists destination_provider text,
   add column if not exists destination_object_id text,
   add column if not exists destination_sha256 text;
@@ -105,12 +106,21 @@ begin
   -- Uploads have a 24-hour renewable lease. Downloaded items are deliberately
   -- excluded: the temp ciphertext is retained until permanent-copy proof exists.
   for v_row in
-    update public.snap_deliveries d
-      set status='expiring', expiry_claimed_at=now()
+    with candidates as (
+      select d.id
+      from public.snap_deliveries d
       where d.status='uploading'
         and d.upload_lease_expires_at < now()
       order by d.upload_lease_expires_at
       limit greatest(0,p_batch_size-v_count)
+      for update skip locked
+    )
+    update public.snap_deliveries d
+      set expiry_previous_status=d.status,
+          status='expiring',
+          expiry_claimed_at=now()
+      from candidates c
+      where d.id=c.id
       returning d.id,d.object_path
   loop
     delivery_id := v_row.id; object_path := v_row.object_path;
@@ -140,9 +150,8 @@ begin
     delete from public.snap_deliveries where id=p_delivery_id and status='expiring';
   else
     update public.snap_deliveries
-      set status=case when downloaded_at is not null then 'downloaded' else
-        case when upload_lease_expires_at < now() then 'uploading' else 'pending' end end,
-        expiry_claimed_at=null
+      set status=coalesce(expiry_previous_status,'pending'),
+        expiry_previous_status=null, expiry_claimed_at=null
       where id=p_delivery_id and status='expiring';
   end if;
 end;
