@@ -4,6 +4,13 @@ An Android-first personal operating system for tasks, habits, routines, insights
 
 Repository: [vedansh-op/Routine-manager-](https://github.com/vedansh-op/Routine-manager-)
 
+## Releases
+
+- **Download APKs:** [ONE-OS Releases](https://github.com/vedansh-op/Routine-manager-/releases)
+- Each published version includes an Android APK, SHA-256 checksum, and generated change summary.
+- Releases are created from reviewed version tags (for example, `v1.0.1`), not from every intermediate commit.
+- See [the release guide](docs/RELEASING.md) for the publishing process and build limitations.
+
 ## Current implementation
 
 - Expo SDK 54 / React Native / TypeScript app with Home, Tasks, Habits, Insights, Account, Shared Space, Our Time, Shared Calendar, and Private Photo Memories screens.
@@ -11,7 +18,7 @@ Repository: [vedansh-op/Routine-manager-](https://github.com/vedansh-op/Routine-
 - Local-first task, habit, and completion history, encrypted at rest with XChaCha20-Poly1305; Supabase receives weekly aggregate reports only.
 - Shared activities can be scheduled with the phone's native date/time picker, stored as UTC instants, and displayed in each device's local timezone; the creator sees the Portugal-time conversion before saving.
 - Private photo memories: device-specific X25519 keys in Android SecureStore, ephemeral key agreement + HKDF-SHA256, XChaCha20-Poly1305 photo encryption, encrypted app-private local vault, recipient acknowledgement, and server-side expiry of pending cloud deliveries after 72 hours without a successful recipient heartbeat.
-- GitHub Actions workflow builds an installable Android debug APK.
+- GitHub Actions workflows validate TypeScript and build standalone Android debug APKs for versioned releases.
 
 ## Supabase setup order
 
@@ -42,6 +49,6 @@ In the app, configure only the Supabase Project URL and publishable/anon key as 
 
 ## Build and validation
 
-Open [GitHub Actions](https://github.com/vedansh-op/Routine-manager-/actions). A build is ready only when the latest relevant run completes successfully and includes a downloadable `ONE-OS-debug-apk` artifact from that same run.
+Open [GitHub Actions](https://github.com/vedansh-op/Routine-manager-/actions). A build is ready only when the latest relevant run completes successfully and includes its APK from that same run.
 
 The current source still needs live Supabase configuration, migrations/functions deployment, two-account testing, and physical Android testing. A successful TypeScript check or APK build alone does not prove backend flows work.
