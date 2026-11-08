@@ -1,6 +1,6 @@
 # ONE-OS security remediation status — 8 November 2026
 
-This status covers the four additive security migrations and two updated Snap Edge Functions on the Phase 1 feature branch. The shared-history migration's two malformed function terminators and the weekly-report migration's malformed function terminator were corrected. A duplicated trailing SQL fragment in the weekly-report migration was also removed and the complete file was re-fetched for source verification. Static delimiter checks pass for all nine migration files; SQL compilation still requires non-production PostgreSQL validation. Snap UI acknowledgement handling now waits for a confirmed server response and does not treat a missing delivery row as a successful receipt. The recipient inbox also includes `downloaded` deliveries, so a retained encrypted server copy can be downloaded again after local app data loss or reinstall until permanent-copy verification is implemented.
+This status covers six additive security migrations and two updated Snap Edge Functions on the Phase 1 feature branch. The shared-history migration's two malformed function terminators and the weekly-report migration's malformed function terminator were corrected. A duplicated trailing SQL fragment in the weekly-report migration was also removed and the complete file was re-fetched for source verification. Static delimiter checks were previously run for the original nine migration files; the two later privilege and Snap re-download migrations have been source-reviewed but still require PostgreSQL validation. SQL compilation for every migration remains unverified. Snap UI acknowledgement handling now waits for a confirmed server response and does not treat a missing delivery row as a successful receipt. The recipient inbox and Storage read policy now allow re-download of retained `downloaded` ciphertext on the same still-registered recipient device. This does not recover a lost private key or make an old device-bound delivery readable on a replacement device; the key recovery/rotation protocol remains open.
 
 ## Finding-by-finding status
 
@@ -62,7 +62,7 @@ These are source changes, not verified deployed fixes. The migrations have not y
 6. Verify a heartbeat racing the expiry claim prevents the delivery claim when heartbeat wins the lock.
 7. Verify expiry cleanup retries after Storage failure and never purges downloaded deliveries.
 8. Verify uploading leases can be renewed and expired leases are cleaned safely.
-9. Verify ack-snap marks download only and leaves the ciphertext object and delivery envelope intact; verify the recipient can re-download it after app-data loss while the delivery remains `downloaded`.
+9. Verify ack-snap marks download only and leaves the ciphertext object and delivery envelope intact; verify the recipient can re-download it on the same still-registered recipient device while the delivery remains `downloaded`.
 10. Test invite throttling, device key immutability, report size, report RLS, and text constraints.
 11. Inspect effective grants, RLS policies, Storage policies, SECURITY DEFINER grants, cron, Vault and Edge Function secrets in the test project.
 12. Run two-account and multi-device negative tests for every table and object path.
