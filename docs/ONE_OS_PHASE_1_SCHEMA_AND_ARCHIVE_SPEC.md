@@ -116,6 +116,22 @@ A future recovery envelope record may hold owner, envelope version, KDF/algorith
 
 The future Drive delivery should reuse the existing snap_deliveries authorization and audited lifecycle. It may add opaque sender Drive object reference, ciphertext digest/size, recipient permanent-copy verification reference and proof/receipt metadata, but must not accept a client string as proof that a Drive object is permanently copied. The recipient's destination needs independent verification through a trusted protocol. Only after permanent-copy proof can temporary sender delivery ciphertext be deleted.
 
+### 4.7 Snap envelope versioning and metadata authentication
+
+**Current-state finding:** the checked-in Snap v1 encryption authenticates the encrypted photo bytes and separately wraps a random file key using X25519 + HKDF + XChaCha20-Poly1305. The current calls do not supply AEAD associated data for delivery-row metadata. Ciphertext authentication alone therefore does not cryptographically bind `space_id`, `sender_id`, `recipient_id`, `recipient_device_id`, `mime_type`, `captured_at` or declared plaintext size to the encrypted photo. Server-side row authorization remains required, but it is not a substitute for cryptographic context binding.
+
+**Required v2 design before claiming metadata integrity:**
+
+- Preserve an explicit `encryption_version=1` path for existing deliveries. New v2 envelopes must be stored and routed by an explicit version field; a failed v2 authentication must never fall back to v1.
+- Allocate a stable random delivery UUID before encrypting. The sender may generate a UUID client-side, but the v2 creation RPC must verify its shape and uniqueness and derive the sender identity from the authenticated session rather than trust a client-supplied identity.
+- Define deterministic, versioned, length-prefixed binary AAD encoding. Do not depend on incidental JSON property order or locale-sensitive timestamp formatting.
+- Bind content AEAD to a v2 domain/version tag, stable delivery UUID, space UUID, authenticated sender UUID, recipient UUID, exact recipient device ID, normalized MIME type, canonical capture instant and plaintext byte length. Additional fields that change payload interpretation must either be bound or treated as advisory only.
+- Bind wrapped-file-key AEAD to a separate domain/version tag, delivery/recipient/device context, recipient public-key fingerprint, ephemeral public key and wrap salt. Use distinct domain tags for content and key-wrap authentication.
+- Keep decryption version-specific. For v2, recompute the exact AAD from the authenticated delivery row and recipient's own device-key context before decrypting. Any mismatch fails closed.
+- Use a new versioned RPC such as `create_snap_delivery_v2` or an equally unambiguous compatible entry point. Avoid an overloaded PostgREST signature that could make old-client calls ambiguous. Keep legacy v1 creation/decryption available for existing app builds during a planned compatibility window.
+- Add SQL constraints for supported versions and tests for row-field tampering, cross-delivery replay, wrong-device context, envelope tampering, duplicate IDs and historical v1 decryption.
+- Do not change the v1 wire format in place. The v2 design, AAD encoding and migration path require independent cryptographic review before implementation or release.
+
 ## 5. Immutable archive format contract
 
 This section defines a format contract for implementation planning, not an approved cryptographic construction. Algorithm details, key derivation, nonces, AAD serialization and recovery-envelope wrapping require independent cryptographic review and test vectors before implementation.
