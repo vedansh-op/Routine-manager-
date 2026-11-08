@@ -11,6 +11,7 @@ as $$
 declare
   v_space_type text;
   v_member_count integer;
+  v_archive_ended_at timestamptz;
 begin
   -- Serialize all shared-space membership changes for this account, then for
   -- the target space. The same lock order is used for every insert.
@@ -29,12 +30,14 @@ begin
     return new;
   end if;
 
-  if not exists (
-    select 1
-    from public.shared_archives a
-    where a.source_space_id = new.space_id
-      and a.ended_at is null
-  ) then
+  -- Lock the archive row used by End Connection. This serializes a
+  -- concurrent membership insert against the MFA-confirmed end operation.
+  select a.ended_at into v_archive_ended_at
+  from public.shared_archives a
+  where a.source_space_id = new.space_id
+  for update;
+
+  if not found or v_archive_ended_at is not null then
     raise exception 'Shared connection is not active';
   end if;
 
