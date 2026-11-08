@@ -11,7 +11,7 @@ create policy "Users can read own and active two-person shared device public key
   for select
   to authenticated
   using (
-    (user_id = (select auth.uid()) and revoked_at is null)
+    user_id = (select auth.uid())
     or exists (
       select 1
       from public.space_members mine
@@ -21,6 +21,7 @@ create policy "Users can read own and active two-person shared device public key
        and partner.user_id = device_crypto_keys.user_id
       where mine.user_id = (select auth.uid())
         and mine.user_id <> device_crypto_keys.user_id
+        and device_crypto_keys.revoked_at is null
         and s.space_type = 'shared'
         and (
           select count(*)
