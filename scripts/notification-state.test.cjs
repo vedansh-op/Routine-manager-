@@ -61,7 +61,7 @@ test("valid one-time, daily and weekly reminder rules are preserved", () => {
       validReminder({ id: "weekly", sourceKey: "weekly", repeat: { kind: "weekly", weekday: 2, hour: 18, minute: 0 } }),
     ],
   });
-  assert.deepEqual(result.reminders.map(item => item.repeat.kind), ["once", "daily", "weekly"]);
+  assert.equal(JSON.stringify(result.reminders.map(item => item.repeat.kind)), JSON.stringify(["once", "daily", "weekly"]));
 });
 
 test("duplicate reminder IDs and stable source keys are removed", () => {
