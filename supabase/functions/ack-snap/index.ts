@@ -30,6 +30,18 @@ Deno.serve(async (request) => {
   const { data: authData, error: authError } = await userClient.auth.getUser();
   if (authError || !authData.user) return Response.json({ error: "Authentication required" }, { status: 401, headers: cors });
 
+  // This Edge Function performs the Snap state update with the service-role
+  // client, so it must independently enforce the caller's verified email and
+  // MFA assurance before crossing that privilege boundary.
+  if (!authData.user.email_confirmed_at) {
+    return Response.json({ error: "Verified email required" }, { status: 403, headers: cors });
+  }
+  const { data: assurance, error: assuranceError } =
+    await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (assuranceError || assurance.currentLevel !== "aal2") {
+    return Response.json({ error: "Multi-factor authentication required" }, { status: 403, headers: cors });
+  }
+
   let body: { deliveryId?: string };
   try { body = await request.json(); } catch { return Response.json({ error: "Invalid JSON" }, { status: 400, headers: cors }); }
   if (!body.deliveryId || !/^[0-9a-f-]{36}$/i.test(body.deliveryId)) {
