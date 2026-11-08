@@ -1,3 +1,5 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Directory, File, Paths } from "expo-file-system";
 import * as SecureStore from "expo-secure-store";
 import { x25519 } from "@noble/curves/ed25519.js";
 import { supabase } from "@/lib/supabase";
@@ -85,4 +87,76 @@ export async function inspectLegacyDeviceKey(userId: string): Promise<LegacyDevi
     secretPresent: true,
     revoked: data.revoked_at !== null,
   };
+}
+
+
+export type LocalEncryptedDataInventory = {
+  status: "complete" | "unknown";
+  dataKey: "present-valid" | "present-malformed" | "missing" | "unknown";
+  appStoreRecord: "encrypted" | "legacy-plaintext" | "absent" | "unknown";
+  legacyUnscopedAppStoreRecord: "present" | "absent" | "unknown";
+  snapIndex: "encrypted" | "legacy-plaintext" | "absent" | "unknown";
+  snapVault: "contains-files" | "empty-visible" | "not-visible" | "unknown";
+  snapVaultFileCount: number | null;
+};
+
+/**
+ * Read-only inventory of local encrypted account data and its data-key alias.
+ *
+ * This deliberately does not decrypt, migrate, create, overwrite, or delete
+ * anything. "not-visible" is not treated as proof that the vault is empty:
+ * Expo reports inaccessible and missing directories identically.
+ */
+export async function inspectLocalEncryptedData(userId: string): Promise<LocalEncryptedDataInventory> {
+  if (!userId || userId.length > 128) {
+    throw new Error("A valid account ID is required to inspect local encrypted data.");
+  }
+
+  const result: LocalEncryptedDataInventory = {
+    status: "unknown",
+    dataKey: "unknown",
+    appStoreRecord: "unknown",
+    legacyUnscopedAppStoreRecord: "unknown",
+    snapIndex: "unknown",
+    snapVault: "unknown",
+    snapVaultFileCount: null,
+  };
+
+  try {
+    const [dataKeyHex, appStoreRaw, legacyRaw, snapIndexRaw] = await Promise.all([
+      SecureStore.getItemAsync("one-os-data-key:" + userId),
+      AsyncStorage.getItem("one-os-v2:" + userId),
+      AsyncStorage.getItem("one-os-v1"),
+      AsyncStorage.getItem("one-os-snap-index-v1:" + userId),
+    ]);
+
+    if (dataKeyHex === null) result.dataKey = "missing";
+    else result.dataKey = /^(?:[0-9a-f]{2}){32}$/i.test(dataKeyHex) ? "present-valid" : "present-malformed";
+
+    result.appStoreRecord = appStoreRaw === null
+      ? "absent"
+      : appStoreRaw.startsWith("enc1:") ? "encrypted" : "legacy-plaintext";
+    result.legacyUnscopedAppStoreRecord = legacyRaw === null ? "absent" : "present";
+    result.snapIndex = snapIndexRaw === null
+      ? "absent"
+      : snapIndexRaw.startsWith("enc1:") ? "encrypted" : "legacy-plaintext";
+
+    const vault = new Directory(Paths.document, "oneos-private-snaps", userId);
+    if (!vault.exists) {
+      // Expo's exists flag is false for both absent and inaccessible paths.
+      result.snapVault = "not-visible";
+    } else {
+      const entries = vault.list();
+      const files = entries.filter(entry => entry instanceof File);
+      result.snapVaultFileCount = files.length;
+      result.snapVault = files.length > 0 ? "contains-files" : "empty-visible";
+    }
+
+    result.status = "complete";
+    return result;
+  } catch {
+    // Preserve partial observations but never convert an inspection failure
+    // into an "empty" result that could authorize fresh-key generation.
+    return result;
+  }
 }
