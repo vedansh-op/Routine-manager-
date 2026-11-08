@@ -70,10 +70,11 @@ Android notification delivery is best-effort and can be delayed by OS/OEM batter
 
 - Explicit fresh-install data-key initialization, read-only local encrypted-data inventory and fail-closed startup classification are present.
 - Existing ciphertext is preserved when its key is missing or malformed; code does not silently create a replacement key over existing encrypted data.
-- Recovery-state, key-registry, secure-store, Snap-vault and legacy migration tests are included in CI.
+- Recovery-state, key-registry, secure-store, Snap-vault and legacy migration tests are included in CI. Secure session storage now enforces the same 100-chunk / 40,000-character limit on write and read; failed chunk writes preserve the previous committed manifest.
 - A key hierarchy/recovery-envelope design document exists, but recovery envelopes, historical Snap key recovery and verified new-device replacement are not implemented.
 - Backup TOTP is separate from encryption-key recovery. Supabase JS MFA recovery-code semantics are not invented in the client.
 - Device-key revocation does not revoke the lost device's auth session.
+- Snap ciphertext and wrapped file keys use authenticated encryption; temporary secret buffers are cleared in `finally` blocks. Seven regression tests cover recipient-key enforcement, ciphertext/envelope tampering and failure-path cleanup. **Separate delivery-row metadata is not currently authenticated as associated data**; a versioned backward-compatible metadata-binding design is still required and awaits independent review.
 
 ## Supabase migration inventory
 
@@ -119,14 +120,17 @@ The new schema/archive document describes proposed future metadata concepts. It 
 
 ## CI validation
 
-The latest verified feature-branch CI run passed on commit 390e9cf22ab01eca6bea82058306604e054e0fd3:
+The latest verified feature-branch CI run passed on commit bf381bf71a99fa425bb5abddf3d44c83b5657566:
 - TypeScript validation passed.
 - Recovery-state suite: 27 tests passed.
 - Notification-state suite: 6 tests passed.
+- Snap crypto suite: 7 tests passed.
+- Secure session storage suite: 7 tests passed.
+- **Total: 47 automated tests passed across four suites.**
 
-Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42531551790
+Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42532866305
 
-The TypeScript workflow now runs both recovery and notification test suites. The Android APK and versioned release workflows also include these regression tests, but the feature-branch commit above is not itself a verified APK artifact. The APK workflow is configured to run on main pushes or manual dispatch; do not infer an APK was built from a green TypeScript job.
+The TypeScript workflow now runs recovery, notification-state, Snap crypto and secure session storage suites. The Android APK and versioned release workflows also include these regression tests, but the feature-branch commit above is not itself a verified APK artifact. The APK workflow is configured to run on main pushes or manual dispatch; do not infer an APK was built from a green TypeScript job.
 
 ## Build and release status
 
