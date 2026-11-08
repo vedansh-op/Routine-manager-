@@ -33,7 +33,7 @@ begin
   end if;
   return true;
 end;
-$;
+$$;
 
 revoke all on function public.is_valid_weekly_aggregate(jsonb) from public;
 grant execute on function public.is_valid_weekly_aggregate(jsonb) to authenticated;
