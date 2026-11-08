@@ -124,23 +124,42 @@ export async function inspectLocalEncryptedData(userId: string): Promise<LocalEn
   };
 
   try {
-    const [dataKeyHex, appStoreRaw, legacyRaw, snapIndexRaw] = await Promise.all([
+    // Read each storage boundary independently. One inaccessible store must
+    // not erase observations successfully collected from the others.
+    const observations = await Promise.allSettled([
       SecureStore.getItemAsync("one-os-data-key:" + userId),
       AsyncStorage.getItem("one-os-v2:" + userId),
       AsyncStorage.getItem("one-os-v1"),
       AsyncStorage.getItem("one-os-snap-index-v1:" + userId),
     ]);
 
-    if (dataKeyHex === null) result.dataKey = "missing";
-    else result.dataKey = /^(?:[0-9a-f]{2}){32}$/i.test(dataKeyHex) ? "present-valid" : "present-malformed";
+    const [dataKeyRead, appStoreRead, legacyRead, snapIndexRead] = observations;
 
-    result.appStoreRecord = appStoreRaw === null
-      ? "absent"
-      : appStoreRaw.startsWith("enc1:") ? "encrypted" : "legacy-plaintext";
-    result.legacyUnscopedAppStoreRecord = legacyRaw === null ? "absent" : "present";
-    result.snapIndex = snapIndexRaw === null
-      ? "absent"
-      : snapIndexRaw.startsWith("enc1:") ? "encrypted" : "legacy-plaintext";
+    if (dataKeyRead.status === "fulfilled") {
+      const dataKeyHex = dataKeyRead.value;
+      if (dataKeyHex === null) result.dataKey = "missing";
+      else result.dataKey = /^(?:[0-9a-f]{2}){32}$/i.test(dataKeyHex)
+        ? "present-valid"
+        : "present-malformed";
+    }
+
+    if (appStoreRead.status === "fulfilled") {
+      const appStoreRaw = appStoreRead.value;
+      result.appStoreRecord = appStoreRaw === null
+        ? "absent"
+        : appStoreRaw.startsWith("enc1:") ? "encrypted" : "legacy-plaintext";
+    }
+
+    if (legacyRead.status === "fulfilled") {
+      result.legacyUnscopedAppStoreRecord = legacyRead.value === null ? "absent" : "present";
+    }
+
+    if (snapIndexRead.status === "fulfilled") {
+      const snapIndexRaw = snapIndexRead.value;
+      result.snapIndex = snapIndexRaw === null
+        ? "absent"
+        : snapIndexRaw.startsWith("enc1:") ? "encrypted" : "legacy-plaintext";
+    }
 
     // Inspect from the accessible document root downward. A missing
     // per-user directory is considered empty only after its parent was
