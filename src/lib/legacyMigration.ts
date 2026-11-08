@@ -16,15 +16,21 @@ export function migrateLegacyRecordForUser(
   userId: string,
   storage: LegacyStorage,
   persistEncrypted: (value: string) => Promise<void>,
+  shouldContinue: () => boolean = () => true,
 ): Promise<boolean> {
   const operation = migrationQueue.catch(() => undefined).then(async () => {
+    if (!shouldContinue()) return false;
     const legacy = await storage.getItem(LEGACY_KEY);
-    if (legacy === null) return false;
+    if (!shouldContinue() || legacy === null) return false;
 
     let owner = await storage.getItem(LEGACY_OWNER_KEY);
+    if (!shouldContinue()) return false;
     if (owner !== null && owner !== userId) return false;
 
     if (owner === null) {
+      // Do not bind the installation-wide legacy record to an account whose
+      // startup has already been cancelled (for example, after sign-out).
+      if (!shouldContinue()) return false;
       await storage.setItem(LEGACY_OWNER_KEY, userId);
       owner = await storage.getItem(LEGACY_OWNER_KEY);
       if (owner !== userId) {
@@ -33,10 +39,12 @@ export function migrateLegacyRecordForUser(
     }
 
     // Re-read after the ownership claim. Persist the encrypted copy before
-    // removing the original so an interrupted migration remains retryable.
+    // removing the original so an interrupted or cancelled migration remains
+    // retryable by the account that owns the legacy record.
     const currentLegacy = await storage.getItem(LEGACY_KEY);
-    if (currentLegacy === null) return false;
+    if (!shouldContinue() || currentLegacy === null) return false;
     await persistEncrypted(currentLegacy);
+    if (!shouldContinue()) return false;
     await storage.removeItem(LEGACY_KEY);
     return true;
   });
