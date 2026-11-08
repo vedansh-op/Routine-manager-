@@ -539,56 +539,56 @@ export async function snoozeReminder(userId: string, reminderId: string, minutes
 export async function updateNotificationSettings(
   userId: string,
   patch: Partial<Omit<NotificationSettings, "categoryEnabled" | "quietHours">> & {
-  return withNotificationQueue(async () => {
     categoryEnabled?: Partial<Record<NotificationCategory, boolean>>;
     quietHours?: Partial<QuietHours>;
   },
 ) {
-  const state = await loadState(userId);
-  const oldSettings = state.settings;
-  state.settings = {
-    ...oldSettings,
-    ...patch,
-    categoryEnabled: { ...oldSettings.categoryEnabled, ...patch.categoryEnabled },
-    quietHours: { ...oldSettings.quietHours, ...patch.quietHours },
-  };
-  await ensureNotificationChannels(state.settings);
-  const permission = await Notifications.getPermissionsAsync();
-  if (permission.granted) {
-    for (const reminder of state.reminders) {
-      const oldId = reminder.notificationId;
-      if (oldId) {
-        await Notifications.cancelScheduledNotificationAsync(oldId).catch(() => undefined);
-        reminder.notificationId = null;
-      }
-      if (reminder.enabled && !reminder.completed) {
-        try {
-          const newId = await scheduleNative(userId, reminder, state.settings);
-          reminder.notificationId = newId;
-        } catch {
+  return withNotificationQueue(async () => {
+    const state = await loadState(userId);
+    const oldSettings = state.settings;
+    state.settings = {
+      ...oldSettings,
+      ...patch,
+      categoryEnabled: { ...oldSettings.categoryEnabled, ...patch.categoryEnabled },
+      quietHours: { ...oldSettings.quietHours, ...patch.quietHours },
+    };
+    await ensureNotificationChannels(state.settings);
+    const permission = await Notifications.getPermissionsAsync();
+    if (permission.granted) {
+      for (const reminder of state.reminders) {
+        const oldId = reminder.notificationId;
+        if (oldId) {
+          await Notifications.cancelScheduledNotificationAsync(oldId).catch(() => undefined);
           reminder.notificationId = null;
+        }
+        if (reminder.enabled && !reminder.completed) {
+          try {
+            const newId = await scheduleNative(userId, reminder, state.settings);
+            reminder.notificationId = newId;
+          } catch {
+            reminder.notificationId = null;
+          }
         }
       }
     }
-  }
-  await saveState(userId, state);
-  return state;
+    await saveState(userId, state);
+    return state;
   });
 }
 
 export async function recordNotificationHistory(
   userId: string,
-  entry: Omit<NotificationHistoryEntry, "id" | "occurredAt"> & {
-  return withNotificationQueue(async () => { occurredAt?: string },
+  entry: Omit<NotificationHistoryEntry, "id" | "occurredAt"> & { occurredAt?: string },
 ) {
-  const state = await loadState(userId);
-  const id = makeId();
-  state.history = [{
-    ...entry,
-    id,
-    occurredAt: entry.occurredAt ?? new Date().toISOString(),
-  }, ...state.history].slice(0, 100);
-  await saveState(userId, state);
+  return withNotificationQueue(async () => {
+    const state = await loadState(userId);
+    const id = makeId();
+    state.history = [{
+      ...entry,
+      id,
+      occurredAt: entry.occurredAt ?? new Date().toISOString(),
+    }, ...state.history].slice(0, 100);
+    await saveState(userId, state);
   });
 }
 
