@@ -97,7 +97,7 @@ begin
   end if;
   return new;
 end;
-$;
+$archive_fn$;
 revoke all on function public.create_shared_archive_for_space() from public;
 
 drop trigger if exists create_shared_archive_after_space_insert on public.spaces;
