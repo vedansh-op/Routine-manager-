@@ -63,18 +63,18 @@ test("concurrent saves preserve every entry in the encrypted index", async () =>
   assert.deepEqual(Array.from(records, item => item.id).sort(), ["delivery-one", "delivery-two"]);
 });
 
-test("encryption failure leaves an existing snap file unchanged", async () => {
+test("duplicate save is rejected without overwriting an existing snap file", async () => {
   files.clear();
   indexValue = null;
   const original = await vault.saveLocalSnap("user-a", "delivery-safe", "image/jpeg", "2026-01-01T00:00:00.000Z", "sent", new Uint8Array([7, 8, 9]));
   const before = Array.from(files.get(original.fileUri));
-  failEncryption = true;
+  const indexBefore = indexValue;
   await assert.rejects(
     vault.saveLocalSnap("user-a", "delivery-safe", "image/jpeg", "2026-01-01T00:00:00.000Z", "sent", new Uint8Array([4])),
-    /key unavailable/,
+    /already saved/i,
   );
-  failEncryption = false;
   assert.deepEqual(Array.from(files.get(original.fileUri)), before);
+  assert.equal(indexValue, indexBefore);
 });
 
 test("unsafe identifiers are rejected instead of being normalized into colliding filenames", async () => {
@@ -82,4 +82,22 @@ test("unsafe identifiers are rejected instead of being normalized into colliding
     vault.saveLocalSnap("user-a", "delivery/one", "image/jpeg", "2026-01-01T00:00:00.000Z", "sent", new Uint8Array([1])),
     /invalid local photo identifier/i,
   );
+});
+
+
+test("malformed encrypted index is rejected without being rewritten", async () => {
+  files.clear();
+  indexValue = "{broken";
+  await assert.rejects(vault.getLocalSnaps("user-a"), /index is damaged/i);
+  assert.equal(indexValue, "{broken");
+});
+
+test("invalid records and duplicate IDs are rejected", async () => {
+  indexValue = JSON.stringify([{ id: "../outside", fileUri: "file:///outside", mimeType: "image/jpeg", capturedAt: "2026-01-01T00:00:00.000Z", direction: "sent" }]);
+  await assert.rejects(vault.getLocalSnaps("user-a"), /invalid records/i);
+  indexValue = JSON.stringify([
+    { id: "same", fileUri: "file:///one", mimeType: "image/jpeg", capturedAt: "2026-01-01T00:00:00.000Z", direction: "sent" },
+    { id: "same", fileUri: "file:///two", mimeType: "image/jpeg", capturedAt: "2026-01-02T00:00:00.000Z", direction: "received" },
+  ]);
+  await assert.rejects(vault.getLocalSnaps("user-a"), /duplicate IDs/i);
 });
