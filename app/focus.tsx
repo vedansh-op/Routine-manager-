@@ -14,9 +14,9 @@ import {
 
 const presets = [25, 50, 90];
 
-function remainingLabel(reminder: Reminder | null) {
+function remainingLabel(reminder: Reminder | null, now: number) {
   if (!reminder || reminder.repeat.kind !== "once") return "No active focus session";
-  const remaining = Math.max(0, new Date(reminder.repeat.date).getTime() - Date.now());
+  const remaining = Math.max(0, new Date(reminder.repeat.date).getTime() - now);
   const minutes = Math.floor(remaining / 60_000);
   const seconds = Math.floor((remaining % 60_000) / 1000);
   if (remaining <= 0) return "Session time reached";
@@ -100,7 +100,7 @@ export default function FocusScreen() {
 
     <View style={s.timer}>
       <Text style={s.timerLabel}>{active ? "SESSION RUNNING" : "READY WHEN YOU ARE"}</Text>
-      <Text style={s.timerValue}>{active ? remainingLabel(active) : "Choose your block"}</Text>
+      <Text style={s.timerValue}>{active ? remainingLabel(active, now) : "Choose your block"}</Text>
       {active?.repeat.kind === "once" ? <Text style={s.ends}>Ends · {new Date(active.repeat.date).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</Text> : null}
     </View>
 
