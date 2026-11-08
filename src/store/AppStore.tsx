@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { getEncryptedItem, initializeUserKeyForFreshInstall, setEncryptedItem } from "@/lib/secureLocalStore";
 import { inspectLocalEncryptedData } from "@/lib/keyRecoveryRegistry";
 import { classifyRecoveryBootstrapState } from "@/lib/keyRecoveryState";
+import { migrateLegacyRecordForUser } from "@/lib/legacyMigration";
 
 export type Task = { id: string; title: string; notes?: string; dueDate?: string; completed: boolean; createdAt: string };
 export type Habit = { id: string; title: string; createdAt: string; archived: boolean };
@@ -103,12 +104,14 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         if (!raw) {
           const alreadyMigrated = await AsyncStorage.getItem(migratedKey(userId));
           if (!alreadyMigrated) {
-            const legacy = await AsyncStorage.getItem(LEGACY_KEY);
-            if (legacy) {
-              raw = legacy;
-              await setEncryptedItem(scopedKey, userId, legacy);
-              await AsyncStorage.removeItem(LEGACY_KEY);
-            }
+            await migrateLegacyRecordForUser(
+              userId,
+              AsyncStorage,
+              async legacy => {
+                raw = legacy;
+                await setEncryptedItem(scopedKey, userId, legacy);
+              },
+            );
             await AsyncStorage.setItem(migratedKey(userId), "1");
           }
         }
