@@ -18,7 +18,7 @@ type Store = {
   storageError: string | null;
   canEdit: boolean;
   addTask: (title: string) => void;
-  toggleTask: (id: string) => void;
+  toggleTask: (id: string) => Promise<void>;
   setTaskReminder: (id: string, reminderId: string, dueDate: string) => void;
   addHabit: (title: string) => void;
   toggleHabitToday: (id: string) => void;
@@ -131,13 +131,18 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     const value = title.trim();
     if (value) setTasks(old => [{ id: uid(), title: value, completed: false, createdAt: new Date().toISOString() }, ...old]);
   }, [storageUnlocked, ready, activeUserId, userId]);
-  const toggleTask = useCallback((id: string) => {
+  const toggleTask = useCallback(async (id: string) => {
     if (!storageUnlocked || !ready || activeUserId !== userId) return;
     const task = tasks.find(item => item.id === id);
     if (!task) return;
     const completing = !task.completed;
     if (completing && task.reminderId && userId) {
-      void cancelReminder(userId, task.reminderId).catch(() => undefined);
+      try {
+        await cancelReminder(userId, task.reminderId);
+      } catch (error) {
+        setStorageError(error instanceof Error ? "Task reminder could not be cancelled: " + error.message : "Task reminder could not be cancelled.");
+        return;
+      }
     }
     setTasks(old => old.map(item => item.id === id
       ? { ...item, completed: completing, reminderId: completing ? undefined : item.reminderId, dueDate: completing ? undefined : item.dueDate }
