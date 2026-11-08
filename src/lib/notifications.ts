@@ -273,7 +273,13 @@ export async function reconcileScheduledNotifications(userId: string | null) {
       await Notifications.cancelScheduledNotificationAsync(request.identifier).catch(() => undefined);
       continue;
     }
-    if (typeof data.reminderId === "string") owned.set(data.reminderId, request);
+    if (typeof data.reminderId === "string") {
+      if (owned.has(data.reminderId)) {
+        await Notifications.cancelScheduledNotificationAsync(request.identifier).catch(() => undefined);
+      } else {
+        owned.set(data.reminderId, request);
+      }
+    }
   }
   if (!userId) return;
 
@@ -316,6 +322,11 @@ export async function reconcileScheduledNotifications(userId: string | null) {
         changed = true;
       }
     }
+  }
+  // Any remaining app-owned scheduled alerts have no encrypted reminder
+  // record, so they are stale and must not continue firing.
+  for (const request of owned.values()) {
+    await Notifications.cancelScheduledNotificationAsync(request.identifier).catch(() => undefined);
   }
   if (changed) await saveState(userId, state);
 }
@@ -461,14 +472,28 @@ export async function snoozeReminder(userId: string, reminderId: string, minutes
   const state = await loadState(userId);
   const reminder = state.reminders.find(item => item.id === reminderId);
   if (!reminder || reminder.completed) return;
-  const oldId = reminder.notificationId;
-  reminder.repeat = { kind: "once", date: new Date(Date.now() + minutes * 60_000).toISOString() };
-  reminder.enabled = true;
-  reminder.notificationId = null;
-  const nextId = await scheduleNative(userId, reminder, state.settings);
-  reminder.notificationId = nextId;
+
+  // Keep a recurring source reminder intact. Snoozing creates a separate
+  // one-off alert; a fired one-time reminder is marked complete instead.
+  if (reminder.repeat.kind === "once") {
+    reminder.notificationId = null;
+    reminder.enabled = false;
+    reminder.completed = true;
+  }
+  const snoozed: Reminder = {
+    ...reminder,
+    id: makeId(),
+    title: reminder.title,
+    sourceKey: undefined,
+    repeat: { kind: "once", date: new Date(Date.now() + minutes * 60_000).toISOString() },
+    notificationId: null,
+    enabled: true,
+    completed: false,
+    createdAt: new Date().toISOString(),
+  };
+  snoozed.notificationId = await scheduleNative(userId, snoozed, state.settings);
+  state.reminders = [snoozed, ...state.reminders].slice(0, 200);
   await saveState(userId, state);
-  if (oldId && oldId !== nextId) await Notifications.cancelScheduledNotificationAsync(oldId).catch(() => undefined);
 }
 
 export async function updateNotificationSettings(
