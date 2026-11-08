@@ -5,7 +5,8 @@ This status covers six additive security migrations and two updated Snap Edge Fu
 ## Finding-by-finding status
 
 | SEC-12 — shared activity archive scope changes | Added a database trigger that makes activity ID, owning space, and original creator immutable after creation, preventing an UPDATE from moving a live event into another partner's shared space while leaving a stale copy in the prior archive. | **Source guard added; validate trigger ordering and update rejection in non-production PostgreSQL.** |
-| SEC-13 — over-broad partner device-key discovery | Replaced the shared-device-key SELECT policy: partner public keys are visible only through an active `shared` space with exactly two members; own device keys remain visible to the owner. | **Source hardening added; verify policy behavior with personal, active shared, ended, and overfull spaces in non-production.** |\n| SEC-14 — Snap insert boundary | Added a database trigger that rejects Snap deliveries unless the space is a real, active `shared` connection with exactly two distinct members and both sender and recipient belong to it. This protects future elevated insert paths as well as the current RPC. | **Source guard added; test personal spaces, ended spaces, extra members, and valid partner sends in non-production.** |
+| SEC-13 — over-broad partner device-key discovery | Replaced the shared-device-key SELECT policy: partner public keys are visible only through an active `shared` space with exactly two members; own device keys remain visible to the owner. | **Source hardening added; verify policy behavior with personal, active shared, ended, and overfull spaces in non-production.** |
+| SEC-14 — Snap insert boundary | Added a database trigger that rejects Snap deliveries unless the space is a real, active `shared` connection with exactly two distinct members and both sender and recipient belong to it. This protects future elevated insert paths as well as the current RPC. | **Source guard added; test personal spaces, ended spaces, extra members, and valid partner sends in non-production.** |\n| SEC-15 — concurrent shared-space membership | Added a table-level membership trigger that serializes inserts by account and target space, rejects a third member, and prevents one account joining two shared spaces concurrently. This closes the race where two invitees could both observe the final slot as free. | **Source guard added; run simultaneous-join tests in non-production PostgreSQL.** |
 
 | Finding | Changes now present on branch | Status |
 |---|---|---|
@@ -30,7 +31,8 @@ This status covers six additive security migrations and two updated Snap Edge Fu
 - supabase/migrations/202611080005_trigger_function_privileges.sql
 - supabase/migrations/202611080006_snap_redownload_policy.sql
 - supabase/migrations/202611080007_immutable_shared_activity_scope.sql
-- supabase/migrations/202611080008_scope_partner_device_key_visibility.sql\n- supabase/migrations/202611080009_require_active_shared_space_for_snaps.sql
+- supabase/migrations/202611080008_scope_partner_device_key_visibility.sql
+- supabase/migrations/202611080009_require_active_shared_space_for_snaps.sql\n- supabase/migrations/202611080010_serialize_shared_membership.sql
 - supabase/functions/ack-snap/index.ts
 - supabase/functions/expire-stale-snaps/index.ts
 - app/shared.tsx
@@ -73,7 +75,8 @@ These are source changes, not verified deployed fixes. The migrations have not y
 12. Run two-account and multi-device negative tests for every table and object path.
 13. Verify trigger-only SECURITY DEFINER functions cannot be executed by `anon` or `authenticated`, while their database triggers continue to fire normally.
 14. Attempt to change `shared_activities.id`, `space_id`, and `created_by` as the creator; all three must be rejected, while ordinary title/note/time edits continue to work.
-15. Verify partner public keys are hidden for personal spaces, ended shared spaces, and spaces with other than exactly two members, but visible to the two active shared participants.\n16. Attempt Snap inserts through the RPC and a controlled elevated test path for personal, ended, one-member, three-member, wrong-sender, and wrong-recipient cases; only the valid active two-person shared-space case should succeed.
+15. Verify partner public keys are hidden for personal spaces, ended shared spaces, and spaces with other than exactly two members, but visible to the two active shared participants.
+16. Attempt Snap inserts through the RPC and a controlled elevated test path for personal, ended, one-member, three-member, wrong-sender, and wrong-recipient cases; only the valid active two-person shared-space case should succeed.\n17. Run two concurrent invite acceptances for one remaining slot; exactly one may join. Also attempt concurrent joins into different shared spaces for the same account; only one may succeed.
 
 ## Release decision
 
