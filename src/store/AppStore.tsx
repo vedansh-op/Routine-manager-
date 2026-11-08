@@ -6,7 +6,7 @@ import { getEncryptedItem, initializeUserKeyForFreshInstall, setEncryptedItem } 
 import { inspectLocalEncryptedData } from "@/lib/keyRecoveryRegistry";
 import { classifyRecoveryBootstrapState } from "@/lib/keyRecoveryState";
 import { migrateLegacyRecordForUser } from "@/lib/legacyMigration";
-import { cancelReminder } from "@/lib/notifications";
+import { cancelReminder, getNotificationState } from "@/lib/notifications";
 
 export type Task = { id: string; title: string; notes?: string; dueDate?: string; reminderId?: string; reminderIds?: string[]; completed: boolean; createdAt: string };
 export type Habit = { id: string; title: string; createdAt: string; archived: boolean; reminderId?: string; reminderIds?: string[]; reminderTime?: string; reminderDays?: number[] };
@@ -215,7 +215,15 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     const routine = routines.find(item => item.id === id);
     if (!routine) return;
     if (userId) {
-      for (const reminderId of routine.reminderIds ?? []) {
+      const notificationState = await getNotificationState(userId);
+      const sourcePrefix = "routine:" + id + ":";
+      const linkedIds = new Set([
+        ...(routine.reminderIds ?? []),
+        ...notificationState.reminders
+          .filter(item => item.sourceKey?.startsWith(sourcePrefix))
+          .map(item => item.id),
+      ]);
+      for (const reminderId of linkedIds) {
         await cancelReminder(userId, reminderId);
       }
     }
