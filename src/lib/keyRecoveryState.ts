@@ -1,4 +1,4 @@
-import type { LegacyDeviceKeyInspection, LocalEncryptedDataInventory } from "@/lib/keyRecoveryRegistry";
+import type { LocalEncryptedDataInventory } from "@/lib/keyRecoveryRegistry";
 
 export type RecoveryBootstrapState =
   | "fresh-candidate"
@@ -7,17 +7,13 @@ export type RecoveryBootstrapState =
   | "needs-review";
 
 /**
- * Conservative, side-effect-free decision over the two read-only inspections.
- * A fresh candidate may contain legacy plaintext that can be migrated, but
- * never encrypted records or files whose key is missing.
+ * Classifies only the local data-key boundary. Device-key registration is a
+ * separate Snap capability and must not block offline access to local tasks.
  */
 export function classifyRecoveryBootstrapState(
-  device: LegacyDeviceKeyInspection,
   inventory: LocalEncryptedDataInventory,
 ): RecoveryBootstrapState {
   if (inventory.status !== "complete") return "needs-review";
-  if (device.status !== "absent" && device.status !== "valid") return "needs-review";
-  if (device.status === "valid" && device.revoked) return "needs-review";
 
   if (inventory.dataKey === "present-valid") return "ready";
 
@@ -38,10 +34,7 @@ export function classifyRecoveryBootstrapState(
     inventory.snapIndex !== "encrypted" &&
     inventory.snapVault === "empty-visible";
 
-  if (
-    inventory.dataKey === "missing" &&
-    legacyDataCanBeMigrated
-  ) {
+  if (inventory.dataKey === "missing" && legacyDataCanBeMigrated) {
     return "fresh-candidate";
   }
 
