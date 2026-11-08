@@ -8,8 +8,8 @@ export type RecoveryBootstrapState =
 
 /**
  * Conservative, side-effect-free decision over the two read-only inspections.
- * "fresh-candidate" is only a candidate: callers must still obtain explicit
- * user confirmation before creating or replacing any key material.
+ * A fresh candidate may contain legacy plaintext that can be migrated, but
+ * never encrypted records or files whose key is missing.
  */
 export function classifyRecoveryBootstrapState(
   device: LegacyDeviceKeyInspection,
@@ -19,40 +19,30 @@ export function classifyRecoveryBootstrapState(
   if (device.status !== "absent" && device.status !== "valid") return "needs-review";
   if (device.status === "valid" && device.revoked) return "needs-review";
 
-  const hasData =
-    inventory.dataKey !== "missing" ||
-    inventory.appStoreRecord !== "absent" ||
-    inventory.legacyUnscopedAppStoreRecord !== "absent" ||
-    inventory.snapIndex !== "absent" ||
-    inventory.snapVault !== "empty-visible";
+  if (inventory.dataKey === "present-valid") return "ready";
+
+  const encryptedDataExists =
+    inventory.appStoreRecord === "encrypted" ||
+    inventory.snapIndex === "encrypted" ||
+    inventory.snapVault === "contains-entries";
 
   if (
-    device.status === "valid" &&
-    !device.revoked &&
-    inventory.dataKey === "present-valid"
-  ) {
-    return "ready";
-  }
-
-  if (
-    device.status === "absent" &&
-    inventory.dataKey === "missing" &&
-    inventory.appStoreRecord === "absent" &&
-    inventory.legacyUnscopedAppStoreRecord === "absent" &&
-    inventory.snapIndex === "absent" &&
-    inventory.snapVault === "empty-visible"
-  ) {
-    return "fresh-candidate";
-  }
-
-  if (
-    hasData &&
-    (inventory.dataKey === "missing" ||
-      inventory.dataKey === "present-malformed" ||
-      device.status === "absent" ||
-      device.status === "partial")
+    encryptedDataExists &&
+    (inventory.dataKey === "missing" || inventory.dataKey === "present-malformed")
   ) {
     return "recover-existing";
+  }
+
+  const legacyDataCanBeMigrated =
+    inventory.appStoreRecord !== "encrypted" &&
+    inventory.snapIndex !== "encrypted" &&
+    inventory.snapVault === "empty-visible";
+
+  if (
+    inventory.dataKey === "missing" &&
+    legacyDataCanBeMigrated
+  ) {
+    return "fresh-candidate";
   }
 
   return "needs-review";
