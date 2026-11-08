@@ -2,10 +2,23 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
 const CHUNK_SIZE = 400;
+const MAX_CHUNKS = 100;
+const MAX_SESSION_CHARS = CHUNK_SIZE * MAX_CHUNKS;
+const VERSION_PATTERN = /^[a-z0-9]{1,64}$/;
 const MANIFEST_SUFFIX = ":manifest";
 const CHUNK_PREFIX = ":chunk:";
 
 type SessionManifest = { version: string; chunks: number };
+
+function isValidManifest(value: unknown): value is SessionManifest {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const manifest = value as Partial<SessionManifest>;
+  return typeof manifest.version === "string" &&
+    VERSION_PATTERN.test(manifest.version) &&
+    Number.isInteger(manifest.chunks) &&
+    (manifest.chunks as number) >= 1 &&
+    (manifest.chunks as number) <= MAX_CHUNKS;
+}
 
 function manifestKey(key: string) { return key + MANIFEST_SUFFIX; }
 function chunkKey(key: string, version: string, index: number) {
@@ -18,23 +31,36 @@ async function readSecureValue(key: string): Promise<string | null> {
   let manifest: SessionManifest;
   try { manifest = JSON.parse(raw) as SessionManifest; }
   catch { throw new Error("ONE-OS secure session manifest is invalid."); }
-  if (typeof manifest.version !== "string" || !Number.isInteger(manifest.chunks) ||
-      manifest.chunks < 1 || manifest.chunks > 100) {
+  if (!isValidManifest(manifest)) {
     throw new Error("ONE-OS secure session manifest is incomplete.");
   }
   const pieces: string[] = [];
   for (let i = 0; i < manifest.chunks; i += 1) {
     const piece = await SecureStore.getItemAsync(chunkKey(key, manifest.version, i));
-    if (piece === null) throw new Error("ONE-OS secure session data is incomplete.");
+    if (
+      piece === null ||
+      piece.length > CHUNK_SIZE ||
+      (i < manifest.chunks - 1 && piece.length !== CHUNK_SIZE)
+    ) {
+      throw new Error("ONE-OS secure session data is incomplete.");
+    }
     pieces.push(piece);
   }
   return pieces.join("");
 }
 
 async function writeSecureValue(key: string, value: string): Promise<void> {
+  if (typeof value !== "string" || value.length > MAX_SESSION_CHARS) {
+    throw new Error("ONE-OS secure session exceeds the supported storage limit.");
+  }
   const oldRaw = await SecureStore.getItemAsync(manifestKey(key));
   let old: SessionManifest | null = null;
-  if (oldRaw) { try { old = JSON.parse(oldRaw) as SessionManifest; } catch { /* replace damaged manifest */ } }
+  if (oldRaw) {
+    try {
+      const parsed: unknown = JSON.parse(oldRaw);
+      if (isValidManifest(parsed)) old = parsed;
+    } catch { /* replace damaged manifest */ }
+  }
   const version = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   const pieces: string[] = [];
   for (let i = 0; i < value.length; i += CHUNK_SIZE) pieces.push(value.slice(i, i + CHUNK_SIZE));
@@ -59,7 +85,7 @@ async function removeSecureValue(key: string): Promise<void> {
   if (raw) {
     try {
       const manifest = JSON.parse(raw) as SessionManifest;
-      if (typeof manifest.version === "string" && Number.isInteger(manifest.chunks)) {
+      if (isValidManifest(manifest)) {
         for (let i = 0; i < manifest.chunks; i += 1) {
           await SecureStore.deleteItemAsync(chunkKey(key, manifest.version, i));
         }
