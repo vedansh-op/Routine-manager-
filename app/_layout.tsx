@@ -95,7 +95,8 @@ function SessionGate() {
                 (item.reminderIds ?? (item.reminderId ? [item.reminderId] : [])).includes(data.parentReminderId)),
             );
             if (task && !task.completed) {
-              await toggleTask(task.id);
+              const completed = await toggleTask(task.id);
+              if (!completed) throw new Error("The task could not be completed; its reminders may still be active.");
             } else {
               await completeReminder(user.id, data.reminderId);
             }
