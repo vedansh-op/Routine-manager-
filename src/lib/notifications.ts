@@ -511,7 +511,7 @@ export async function rescheduleReminder(userId: string, reminderId: string, dat
       throw new Error("This notification category is switched off in settings.");
     }
     const oldId = reminder.notificationId;
-    const updated = { ...reminder, repeat: { kind: "once" as const, date: date.toISOString() }, notificationId: null };
+    const updated: Reminder = { ...reminder, repeat: { kind: "once" as const, date: date.toISOString() }, notificationId: null };
     const nextId = await scheduleNative(userId, updated, state.settings);
     if (!nextId) throw new Error("This reminder could not be scheduled.");
     updated.notificationId = nextId;
