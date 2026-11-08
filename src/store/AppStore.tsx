@@ -10,9 +10,19 @@ import { cancelReminder } from "@/lib/notifications";
 
 export type Task = { id: string; title: string; notes?: string; dueDate?: string; reminderId?: string; reminderIds?: string[]; completed: boolean; createdAt: string };
 export type Habit = { id: string; title: string; createdAt: string; archived: boolean; reminderId?: string; reminderIds?: string[]; reminderTime?: string; reminderDays?: number[] };
+export type RoutineStep = { id: string; title: string; durationMinutes: number };
+export type Routine = {
+  id: string;
+  title: string;
+  steps: RoutineStep[];
+  createdAt: string;
+  reminderIds?: string[];
+  scheduledStartAt?: string;
+};
 type Store = {
   tasks: Task[];
   habits: Habit[];
+  routines: Routine[];
   completions: string[];
   ready: boolean;
   storageError: string | null;
@@ -21,6 +31,9 @@ type Store = {
   toggleTask: (id: string) => Promise<void>;
   setTaskReminder: (id: string, reminderIds: string[], dueDate: string) => void;
   addHabit: (title: string) => void;
+  addRoutine: (title: string, steps: RoutineStep[]) => void;
+  setRoutineSchedule: (id: string, reminderIds: string[], startAt: string) => void;
+  removeRoutine: (id: string) => Promise<void>;
   toggleHabitToday: (id: string) => void;
   setHabitReminder: (id: string, reminderIds: string[] | null, reminderTime?: string, reminderDays?: number[]) => void;
 };
@@ -39,6 +52,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
+  const [routines, setRoutines] = useState<Routine[]>([]);
   const [completions, setCompletions] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
   const [storageUnlocked, setStorageUnlocked] = useState(false);
@@ -52,6 +66,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setActiveUserId(userId);
     setTasks([]);
     setHabits([]);
+    setRoutines([]);
     setCompletions([]);
     if (!userId) {
       setReady(true);
@@ -101,6 +116,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
           const data = JSON.parse(raw);
           setTasks(Array.isArray(data.tasks) ? data.tasks : []);
           setHabits(Array.isArray(data.habits) ? data.habits : []);
+          setRoutines(Array.isArray(data.routines) ? data.routines : []);
           setCompletions(Array.isArray(data.completions) ? data.completions : []);
         }
         if (!cancelled) setStorageUnlocked(true);
@@ -117,7 +133,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!ready || !storageUnlocked || !userId || activeUserId !== userId) return;
     let cancelled = false;
-    setEncryptedItem(keyForUser(userId), userId, JSON.stringify({ tasks, habits, completions })).catch(error => {
+    setEncryptedItem(keyForUser(userId), userId, JSON.stringify({ tasks, habits, routines, completions })).catch(error => {
       // A failed write from a previous account/session must not lock the
       // store after the user has signed out or switched accounts.
       if (cancelled) return;
@@ -125,7 +141,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       setStorageUnlocked(false);
     });
     return () => { cancelled = true; };
-  }, [tasks, habits, completions, ready, storageUnlocked, userId, activeUserId]);
+  }, [tasks, habits, routines, completions, ready, storageUnlocked, userId, activeUserId]);
 
   const addTask = useCallback((title: string) => {
     if (!storageUnlocked || !ready || activeUserId !== userId) return;
@@ -173,6 +189,39 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setCompletions(old => old.includes(key) ? old.filter(x => x !== key) : [...old, key]);
   }, [storageUnlocked, ready, activeUserId, userId]);
 
+  const addRoutine = useCallback((title: string, steps: RoutineStep[]) => {
+    if (!storageUnlocked || !ready || activeUserId !== userId) return;
+    const value = title.trim();
+    const validSteps = steps.filter(step =>
+      typeof step.title === "string" && step.title.trim().length > 0 &&
+      Number.isInteger(step.durationMinutes) && step.durationMinutes >= 1 && step.durationMinutes <= 240,
+    ).slice(0, 12);
+    if (!value || validSteps.length === 0) return;
+    setRoutines(old => [{
+      id: uid(),
+      title: value.slice(0, 80),
+      steps: validSteps.map(step => ({ ...step, id: step.id || uid(), title: step.title.trim().slice(0, 80) })),
+      createdAt: new Date().toISOString(),
+    }, ...old]);
+  }, [storageUnlocked, ready, activeUserId, userId]);
+  const setRoutineSchedule = useCallback((id: string, reminderIds: string[], startAt: string) => {
+    if (!storageUnlocked || !ready || activeUserId !== userId) return;
+    setRoutines(old => old.map(item => item.id === id
+      ? { ...item, reminderIds, scheduledStartAt: startAt }
+      : item));
+  }, [storageUnlocked, ready, activeUserId, userId]);
+  const removeRoutine = useCallback(async (id: string) => {
+    if (!storageUnlocked || !ready || activeUserId !== userId) return;
+    const routine = routines.find(item => item.id === id);
+    if (!routine) return;
+    if (userId) {
+      for (const reminderId of routine.reminderIds ?? []) {
+        await cancelReminder(userId, reminderId);
+      }
+    }
+    setRoutines(old => old.filter(item => item.id !== id));
+  }, [routines, storageUnlocked, ready, activeUserId, userId]);
+
   const setHabitReminder = useCallback((id: string, reminderIds: string[] | null, reminderTime?: string, reminderDays?: number[]) => {
     if (!storageUnlocked || !ready || activeUserId !== userId) return;
     setHabits(old => old.map(item => item.id === id
@@ -181,7 +230,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   }, [storageUnlocked, ready, activeUserId, userId]);
 
   const canEdit = ready && storageUnlocked && activeUserId === userId;
-  const value = useMemo(() => ({ tasks, habits, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday, setHabitReminder }), [tasks, habits, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday, setHabitReminder]);
+  const value = useMemo(() => ({ tasks, habits, routines, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday, setHabitReminder, addRoutine, setRoutineSchedule, removeRoutine }), [tasks, habits, routines, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday, setHabitReminder, addRoutine, setRoutineSchedule, removeRoutine]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 export function useAppStore() {
