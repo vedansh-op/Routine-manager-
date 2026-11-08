@@ -126,9 +126,25 @@ function isCategory(value: unknown): value is NotificationCategory {
   return typeof value === "string" && (NOTIFICATION_CATEGORIES as readonly string[]).includes(value);
 }
 
-function isValidClock(hour: number, minute: number) {
-  return Number.isInteger(hour) && hour >= 0 && hour <= 23 &&
-    Number.isInteger(minute) && minute >= 0 && minute <= 59;
+function isValidClock(hour: unknown, minute: unknown): boolean {
+  return typeof hour === "number" && Number.isInteger(hour) && hour >= 0 && hour <= 23 &&
+    typeof minute === "number" && Number.isInteger(minute) && minute >= 0 && minute <= 59;
+}
+
+function isValidRepeatRule(value: unknown): value is RepeatRule {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const repeat = value as { kind?: unknown; date?: unknown; hour?: unknown; minute?: unknown; weekday?: unknown };
+  if (repeat.kind === "once") {
+    return typeof repeat.date === "string" && repeat.date.length <= 64 &&
+      Number.isFinite(Date.parse(repeat.date));
+  }
+  if (repeat.kind === "daily") return isValidClock(repeat.hour, repeat.minute);
+  if (repeat.kind === "weekly") {
+    return isValidClock(repeat.hour, repeat.minute) &&
+      typeof repeat.weekday === "number" && Number.isInteger(repeat.weekday) &&
+      repeat.weekday >= 1 && repeat.weekday <= 7;
+  }
+  return false;
 }
 
 function isQuietTime(date: Date, quiet: QuietHours) {
@@ -154,66 +170,116 @@ function defaultState(): NotificationState {
   return { reminders: [], history: [], settings: DEFAULT_SETTINGS };
 }
 
-function normalizeState(value: unknown): NotificationState {
+export function normalizeNotificationState(value: unknown): NotificationState {
   if (!value || typeof value !== "object" || Array.isArray(value)) return defaultState();
   const source = value as Partial<NotificationState>;
-  const rawSettings = source.settings as Partial<NotificationSettings> | undefined;
-  const rawCategories = rawSettings?.categoryEnabled as Partial<Record<NotificationCategory, boolean>> | undefined;
-  const rawQuiet = rawSettings?.quietHours as Partial<QuietHours> | undefined;
-  const history = Array.isArray(source.history)
-    ? source.history.filter((item): item is NotificationHistoryEntry => {
-        if (!item || typeof item !== "object") return false;
-        const row = item as Partial<NotificationHistoryEntry>;
-        return typeof row.id === "string" && typeof row.reminderId === "string" &&
-          isCategory(row.category) && typeof row.title === "string" &&
-          typeof row.body === "string" &&
-          (row.event === "received" || row.event === "opened" || row.event === "snoozed" || row.event === "completed") &&
-          typeof row.occurredAt === "string" && Number.isFinite(Date.parse(row.occurredAt));
-      }).slice(0, 100)
-    : [];
-  const reminders = Array.isArray(source.reminders)
-    ? source.reminders.filter((item): item is Reminder => {
-        if (!item || typeof item !== "object") return false;
-        const row = item as Partial<Reminder>;
-        return typeof row.id === "string" && isCategory(row.category) &&
-          typeof row.title === "string" && typeof row.body === "string" &&
-          (row.sourceKey === undefined || typeof row.sourceKey === "string") &&
-          (row.parentReminderId === undefined || typeof row.parentReminderId === "string") &&
-          typeof row.enabled === "boolean" && typeof row.completed === "boolean" &&
-          (row.notificationId === null || typeof row.notificationId === "string") &&
-          Boolean(row.repeat && typeof row.repeat === "object");
-      })
-    : [];
+  const rawSettings = source.settings && typeof source.settings === "object" && !Array.isArray(source.settings)
+    ? source.settings as Partial<NotificationSettings>
+    : undefined;
+  const rawCategories = rawSettings?.categoryEnabled && typeof rawSettings.categoryEnabled === "object" &&
+    !Array.isArray(rawSettings.categoryEnabled)
+    ? rawSettings.categoryEnabled as Partial<Record<NotificationCategory, boolean>>
+    : undefined;
+  const rawQuiet = rawSettings?.quietHours && typeof rawSettings.quietHours === "object" &&
+    !Array.isArray(rawSettings.quietHours)
+    ? rawSettings.quietHours as Partial<QuietHours>
+    : undefined;
+
+  const history: NotificationHistoryEntry[] = [];
+  const seenHistoryIds = new Set<string>();
+  for (const item of Array.isArray(source.history) ? source.history : []) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const row = item as Partial<NotificationHistoryEntry>;
+    if (
+      typeof row.id !== "string" || row.id.length === 0 || row.id.length > 180 ||
+      seenHistoryIds.has(row.id) ||
+      typeof row.reminderId !== "string" || row.reminderId.length === 0 || row.reminderId.length > 180 ||
+      !isCategory(row.category) ||
+      typeof row.title !== "string" || row.title.length === 0 || row.title.length > 90 ||
+      typeof row.body !== "string" || row.body.length > 240 ||
+      (row.event !== "received" && row.event !== "opened" && row.event !== "snoozed" && row.event !== "completed") ||
+      typeof row.occurredAt !== "string" || !Number.isFinite(Date.parse(row.occurredAt))
+    ) continue;
+    seenHistoryIds.add(row.id);
+    history.push(row as NotificationHistoryEntry);
+    if (history.length >= 100) break;
+  }
+
+  const reminders: Reminder[] = [];
+  const seenReminderIds = new Set<string>();
+  const seenSourceKeys = new Set<string>();
+  for (const item of Array.isArray(source.reminders) ? source.reminders : []) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const row = item as Partial<Reminder>;
+    if (
+      typeof row.id !== "string" || row.id.length === 0 || row.id.length > 180 ||
+      seenReminderIds.has(row.id) ||
+      !isCategory(row.category) ||
+      typeof row.title !== "string" || row.title.trim().length === 0 || row.title.length > 90 ||
+      typeof row.body !== "string" || row.body.length > 240 ||
+      (row.route !== undefined && (typeof row.route !== "string" || row.route.length > 120)) ||
+      (row.sourceKey !== undefined && (typeof row.sourceKey !== "string" || row.sourceKey.length === 0 || row.sourceKey.length > 180)) ||
+      (row.parentReminderId !== undefined && (typeof row.parentReminderId !== "string" || row.parentReminderId.length === 0 || row.parentReminderId.length > 180)) ||
+      (row.sourceKey !== undefined && seenSourceKeys.has(row.sourceKey)) ||
+      (row.notificationId !== undefined && row.notificationId !== null &&
+        (typeof row.notificationId !== "string" || row.notificationId.length === 0 || row.notificationId.length > 256)) ||
+      typeof row.enabled !== "boolean" || typeof row.completed !== "boolean" ||
+      typeof row.createdAt !== "string" || !Number.isFinite(Date.parse(row.createdAt)) ||
+      !isValidRepeatRule(row.repeat)
+    ) continue;
+
+    seenReminderIds.add(row.id);
+    if (row.sourceKey !== undefined) seenSourceKeys.add(row.sourceKey);
+    reminders.push({
+      ...row,
+      notificationId: typeof row.notificationId === "string" ? row.notificationId : null,
+    } as Reminder);
+    if (reminders.length >= 200) break;
+  }
+
+  const categoryEnabled = (category: NotificationCategory) =>
+    typeof rawCategories?.[category] === "boolean"
+      ? rawCategories[category] as boolean
+      : DEFAULT_SETTINGS.categoryEnabled[category];
+  const quietClock = (field: "startHour" | "startMinute" | "endHour" | "endMinute") => {
+    const value = rawQuiet?.[field];
+    const maximum = field.endsWith("Hour") ? 23 : 59;
+    return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= maximum
+      ? value
+      : DEFAULT_SETTINGS.quietHours[field];
+  };
+
   return {
     reminders,
     history,
     settings: {
-      enabled: rawSettings?.enabled !== false,
-      sound: rawSettings?.sound !== false,
-      vibration: rawSettings?.vibration !== false,
-      calendarLeadMinutes: [5, 10, 15, 30, 60, 120].includes(rawSettings?.calendarLeadMinutes ?? 15) ? rawSettings?.calendarLeadMinutes ?? 15 : 15,
+      enabled: typeof rawSettings?.enabled === "boolean" ? rawSettings.enabled : DEFAULT_SETTINGS.enabled,
+      sound: typeof rawSettings?.sound === "boolean" ? rawSettings.sound : DEFAULT_SETTINGS.sound,
+      vibration: typeof rawSettings?.vibration === "boolean" ? rawSettings.vibration : DEFAULT_SETTINGS.vibration,
+      calendarLeadMinutes: [5, 10, 15, 30, 60, 120].includes(rawSettings?.calendarLeadMinutes ?? -1)
+        ? rawSettings?.calendarLeadMinutes as number
+        : DEFAULT_SETTINGS.calendarLeadMinutes,
       categoryEnabled: {
-        task: rawCategories?.task !== false,
-        habit: rawCategories?.habit !== false,
-        routine: rawCategories?.routine !== false,
-        calendar: rawCategories?.calendar !== false,
-        focus: rawCategories?.focus !== false,
-        briefing: rawCategories?.briefing !== false,
-        shared: rawCategories?.shared !== false,
-        travel: rawCategories?.travel !== false,
-        system: rawCategories?.system !== false,
+        task: categoryEnabled("task"),
+        habit: categoryEnabled("habit"),
+        routine: categoryEnabled("routine"),
+        calendar: categoryEnabled("calendar"),
+        focus: categoryEnabled("focus"),
+        briefing: categoryEnabled("briefing"),
+        shared: categoryEnabled("shared"),
+        travel: categoryEnabled("travel"),
+        system: categoryEnabled("system"),
       },
       quietHours: {
         enabled: rawQuiet?.enabled === true,
-        startHour: Number.isInteger(rawQuiet?.startHour) && rawQuiet!.startHour! >= 0 && rawQuiet!.startHour! <= 23 ? rawQuiet!.startHour! : 22,
-        startMinute: Number.isInteger(rawQuiet?.startMinute) && rawQuiet!.startMinute! >= 0 && rawQuiet!.startMinute! <= 59 ? rawQuiet!.startMinute! : 0,
-        endHour: Number.isInteger(rawQuiet?.endHour) && rawQuiet!.endHour! >= 0 && rawQuiet!.endHour! <= 23 ? rawQuiet!.endHour! : 7,
-        endMinute: Number.isInteger(rawQuiet?.endMinute) && rawQuiet!.endMinute! >= 0 && rawQuiet!.endMinute! <= 59 ? rawQuiet!.endMinute! : 0,
+        startHour: quietClock("startHour"),
+        startMinute: quietClock("startMinute"),
+        endHour: quietClock("endHour"),
+        endMinute: quietClock("endMinute"),
       },
     },
   };
 }
-
 let notificationQueue: Promise<void> = Promise.resolve();
 
 async function withNotificationQueue<T>(work: () => Promise<T>): Promise<T> {
@@ -233,7 +299,7 @@ async function loadState(userId: string): Promise<NotificationState> {
   const stored = await getEncryptedItem(storageKey(userId), userId);
   if (!stored) return defaultState();
   try {
-    return normalizeState(JSON.parse(stored));
+    return normalizeNotificationState(JSON.parse(stored));
   } catch {
     throw new Error("Notification settings are unreadable. Existing encrypted data was left unchanged.");
   }
