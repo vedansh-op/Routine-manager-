@@ -19,7 +19,7 @@ begin
   loop
     if not (v_item.key = any(v_allowed)) then return false; end if;
     if jsonb_typeof(v_item.value) <> 'number' then return false; end if;
-    if (v_item.value #>> '{}') !~ '^[0-9]+
+    if (v_item.value #>> '{}') !~ '^[0-9]+$' then return false; end if;
     if (v_item.value #>> '{}')::numeric < 0
        or (v_item.value #>> '{}')::numeric > 1000000 then return false; end if;
   end loop;
