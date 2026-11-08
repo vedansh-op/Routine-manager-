@@ -52,3 +52,6 @@ jobs:
 
       - name: Run notification-state tests
         run: npm run test:notifications
+
+      - name: Run Snap crypto tests
+        run: npm run test:crypto
