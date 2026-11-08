@@ -52,7 +52,7 @@ export default function Habits() {
     if (!user?.id || !canEdit) return;
     const habit = habits.find(item => item.id === habitId);
     if (!habit) return;
-    const chosenDays = daysFor(habitId, habit.reminderDays).sort((a, b) => a - b);
+    const chosenDays = [...daysFor(habitId, habit.reminderDays)].sort((a, b) => a - b);
     if (!chosenDays.length) {
       Alert.alert("Choose at least one day", "Select the days when this habit reminder should repeat.");
       return;
