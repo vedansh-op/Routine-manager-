@@ -62,3 +62,35 @@ test("an interrupted encrypted write preserves the legacy record and permits own
   assert.equal(persisted, "legacy-data");
   assert.equal(storage.values.has("one-os-v1"), false);
 });
+
+
+test("a cancelled startup does not claim or remove the legacy record", async () => {
+  const storage = createStorage({ "one-os-v1": "legacy-data" });
+  let writes = 0;
+  const migrated = await migrateLegacyRecordForUser(
+    "account-a",
+    storage,
+    async () => { writes += 1; },
+    () => false,
+  );
+  assert.equal(migrated, false);
+  assert.equal(writes, 0);
+  assert.equal(storage.values.has("one-os-v1-owner"), false);
+  assert.equal(storage.values.get("one-os-v1"), "legacy-data");
+});
+
+test("cancellation after encrypted persistence keeps the original for safe retry", async () => {
+  const storage = createStorage({ "one-os-v1": "legacy-data" });
+  let current = true;
+  let persisted = null;
+  const migrated = await migrateLegacyRecordForUser(
+    "account-a",
+    storage,
+    async value => { persisted = value; current = false; },
+    () => current,
+  );
+  assert.equal(migrated, false);
+  assert.equal(persisted, "legacy-data");
+  assert.equal(storage.values.get("one-os-v1-owner"), "account-a");
+  assert.equal(storage.values.get("one-os-v1"), "legacy-data");
+});
