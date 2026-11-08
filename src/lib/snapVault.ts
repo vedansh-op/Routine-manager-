@@ -13,12 +13,30 @@ export type LocalSnap = {
 const indexKey = (userId: string) => "one-os-snap-index-v1:" + userId;
 const vaultDirectory = (userId: string) => new Directory(Paths.document, "oneos-private-snaps", userId);
 
-export async function getLocalSnaps(userId: string): Promise<LocalSnap[]> {
+// Serialize every index/file mutation for one account. This prevents two
+// simultaneous saves from both reading the same index and losing one entry.
+const vaultQueues = new Map<string, Promise<void>>();
+function withVaultLock<T>(userId: string, operation: () => Promise<T>): Promise<T> {
+  const previous = vaultQueues.get(userId) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(operation);
+  const settled = current.then(() => undefined, () => undefined);
+  vaultQueues.set(userId, settled);
+  void settled.then(() => {
+    if (vaultQueues.get(userId) === settled) vaultQueues.delete(userId);
+  });
+  return current;
+}
+
+async function readIndex(userId: string): Promise<LocalSnap[]> {
   const raw = await getEncryptedItem(indexKey(userId), userId);
   if (!raw) return [];
   const value = JSON.parse(raw);
   if (!Array.isArray(value)) throw new Error("Your private photo index is invalid; it has not been overwritten.");
   return value as LocalSnap[];
+}
+
+export function getLocalSnaps(userId: string): Promise<LocalSnap[]> {
+  return withVaultLock(userId, () => readIndex(userId));
 }
 
 export async function saveLocalSnap(
@@ -30,31 +48,34 @@ export async function saveLocalSnap(
   plaintext: Uint8Array,
   deliveryId?: string,
 ): Promise<LocalSnap> {
-  const directory = vaultDirectory(userId);
-  directory.create({ idempotent: true, intermediates: true });
-  const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "");
-  // Do not silently normalize IDs: two distinct delivery IDs must never map
-  // to the same on-device filename.
-  if (!safeId || safeId !== id) throw new Error("Invalid local photo identifier.");
+  return withVaultLock(userId, async () => {
+    const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "");
+    // Do not silently normalize IDs: distinct IDs must not collide on disk.
+    if (!safeId || safeId !== id) throw new Error("Invalid local photo identifier.");
 
-  // Resolve the account key and finish encryption before opening the target
-  // file. A missing/malformed key must never truncate an existing memory.
-  const encryptedAtRest = await encryptLocalBytes(userId, plaintext);
-  const file = new File(directory, safeId + ".enc");
-  file.create({ intermediates: true, overwrite: true });
-  await file.write(encryptedAtRest);
+    // Finish encryption before opening the target file, so key failures
+    // cannot truncate an existing memory.
+    const encryptedAtRest = await encryptLocalBytes(userId, plaintext);
+    const directory = vaultDirectory(userId);
+    directory.create({ idempotent: true, intermediates: true });
+    const file = new File(directory, safeId + ".enc");
+    file.create({ intermediates: true, overwrite: true });
+    await file.write(encryptedAtRest);
 
-  const record: LocalSnap = { id, deliveryId, fileUri: file.uri, mimeType, capturedAt, direction };
-  const existing = await getLocalSnaps(userId);
-  const next = [record, ...existing.filter(item => item.id !== id)];
-  await setEncryptedItem(indexKey(userId), userId, JSON.stringify(next));
-  return record;
+    const record: LocalSnap = { id, deliveryId, fileUri: file.uri, mimeType, capturedAt, direction };
+    const existing = await readIndex(userId);
+    const next = [record, ...existing.filter(item => item.id !== id)];
+    await setEncryptedItem(indexKey(userId), userId, JSON.stringify(next));
+    return record;
+  });
 }
 
 export async function linkLocalSnapDelivery(userId: string, id: string, deliveryId: string): Promise<void> {
-  const existing = await getLocalSnaps(userId);
-  const next = existing.map(item => item.id === id ? { ...item, deliveryId } : item);
-  await setEncryptedItem(indexKey(userId), userId, JSON.stringify(next));
+  await withVaultLock(userId, async () => {
+    const existing = await readIndex(userId);
+    const next = existing.map(item => item.id === id ? { ...item, deliveryId } : item);
+    await setEncryptedItem(indexKey(userId), userId, JSON.stringify(next));
+  });
 }
 
 export async function readLocalSnap(userId: string, record: LocalSnap): Promise<Uint8Array> {
@@ -64,10 +85,14 @@ export async function readLocalSnap(userId: string, record: LocalSnap): Promise<
 }
 
 export async function deleteLocalSnap(userId: string, record: LocalSnap): Promise<void> {
-  const file = new File(record.fileUri);
-  if (file.exists) file.delete();
-  const existing = await getLocalSnaps(userId);
-  await setEncryptedItem(indexKey(userId), userId, JSON.stringify(existing.filter(item => item.id !== record.id)));
+  await withVaultLock(userId, async () => {
+    const existing = await readIndex(userId);
+    // Commit the index removal first. If file deletion fails, the result is
+    // an unreferenced encrypted file rather than a broken visible memory.
+    await setEncryptedItem(indexKey(userId), userId, JSON.stringify(existing.filter(item => item.id !== record.id)));
+    const file = new File(record.fileUri);
+    if (file.exists) file.delete();
+  });
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {
