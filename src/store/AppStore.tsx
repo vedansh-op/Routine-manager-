@@ -29,6 +29,7 @@ type Store = {
   canEdit: boolean;
   addTask: (title: string) => void;
   toggleTask: (id: string) => Promise<boolean>;
+  removeTask: (id: string) => Promise<void>;
   setTaskReminder: (id: string, reminderIds: string[], dueDate: string) => void;
   addHabit: (title: string) => void;
   addRoutine: (title: string, steps: RoutineStep[]) => void;
@@ -174,6 +175,22 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       : item));
     return true;
   }, [tasks, storageUnlocked, ready, activeUserId, userId]);
+  const removeTask = useCallback(async (id: string) => {
+    if (!storageUnlocked || !ready || activeUserId !== userId || !userId) return;
+    const task = tasks.find(item => item.id === id);
+    if (!task) return;
+    const notificationState = await getNotificationState(userId);
+    const sourcePrefix = "task:" + id + ":lead:";
+    const linkedIds = new Set([
+      ...(task.reminderIds ?? (task.reminderId ? [task.reminderId] : [])),
+      ...notificationState.reminders
+        .filter(item => item.sourceKey?.startsWith(sourcePrefix))
+        .map(item => item.id),
+    ]);
+    for (const reminderId of linkedIds) await cancelReminder(userId, reminderId);
+    setTasks(old => old.filter(item => item.id !== id));
+  }, [tasks, storageUnlocked, ready, activeUserId, userId]);
+
   const setTaskReminder = useCallback((id: string, reminderIds: string[], dueDate: string) => {
     if (!storageUnlocked || !ready || activeUserId !== userId) return;
     setTasks(old => old.map(item => item.id === id
@@ -265,7 +282,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   }, [storageUnlocked, ready, activeUserId, userId]);
 
   const canEdit = ready && storageUnlocked && activeUserId === userId;
-  const value = useMemo(() => ({ tasks, habits, routines, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday, setHabitReminder, addRoutine, setRoutineSchedule, removeRoutine, completeRoutine }), [tasks, habits, routines, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday, setHabitReminder, addRoutine, setRoutineSchedule, removeRoutine, completeRoutine]);
+  const value = useMemo(() => ({ tasks, habits, routines, completions, ready, storageError, canEdit, addTask, toggleTask, removeTask, setTaskReminder, addHabit, toggleHabitToday, setHabitReminder, addRoutine, setRoutineSchedule, removeRoutine, completeRoutine }), [tasks, habits, routines, completions, ready, storageError, canEdit, addTask, toggleTask, removeTask, setTaskReminder, addHabit, toggleHabitToday, setHabitReminder, addRoutine, setRoutineSchedule, removeRoutine, completeRoutine]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 export function useAppStore() {
