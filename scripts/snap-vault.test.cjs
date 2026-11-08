@@ -60,7 +60,7 @@ test("concurrent saves preserve every entry in the encrypted index", async () =>
     vault.saveLocalSnap("user-a", "delivery-two", "image/jpeg", "2026-01-02T00:00:00.000Z", "received", new Uint8Array([2])),
   ]);
   const records = await vault.getLocalSnaps("user-a");
-  assert.deepEqual(records.map(item => item.id).sort(), ["delivery-one", "delivery-two"]);
+  assert.deepEqual(Array.from(records, item => item.id).sort(), ["delivery-one", "delivery-two"]);
 });
 
 test("encryption failure leaves an existing snap file unchanged", async () => {
