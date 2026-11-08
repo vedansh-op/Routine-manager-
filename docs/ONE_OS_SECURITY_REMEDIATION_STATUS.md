@@ -8,22 +8,26 @@ This status covers the three additive security migrations and two updated Snap E
 |---|---|---|
 | SEC-01 — account deletion cascades shared data | Detached archive tables retain shared calendar snapshots without FK cascades to Auth users or live spaces. Archive participant authorization links become null on account deletion while the other participant's link survives. | **Source remediation added; needs PostgreSQL + two-account deletion tests.** Other shared data types (future shared files, notes, tasks) still need to be added to the archive model before claiming all shared history is covered. |
 | SEC-02 — weak invite entropy / guessing | 96-bit invite tokens; hashed at rest; per-account 10-attempt/15-minute throttle. | **Partially fixed.** Add IP/device abuse controls and verify transaction/concurrency behavior. |
-| SEC-03 — arbitrary weekly report JSON | 16 KiB serialized JSON limit. | **Partially fixed.** Strict key allow-list and canonical aggregate schema are still required. |
+| SEC-03 — arbitrary weekly report JSON | 16 KiB serialized JSON limit plus a strict numeric aggregate-key allow-list (tasks_completed, habits_completed, focus_minutes, streak_days, active_days, completion_percent). | **Partially fixed.** Strict key allow-list and canonical aggregate schema are still required. |
 | SEC-04 — silent device-key replacement | Registration is insert-only for a device ID; same key is idempotent; different key is rejected. | **Partially fixed.** A separately authenticated recovery/rotation ceremony and key history remain required. |
 | SEC-05 — stale presence snapshot expiry race | Replaced list-then-delete with a transactional RPC that locks presence rows and claims eligible deliveries. Edge Function performs retryable object cleanup and finalizes state. Uploads now use a 24-hour renewable lease instead of the old one-hour timeout. | **Source remediation added; test concurrent heartbeat, retry and lease behavior.** App still needs to call lease renewal during long uploads. |
 | SEC-06 — acknowledgement deletes before permanent copy | ack-snap now records downloaded only and retains the temporary encrypted object. Download is explicitly not represented as proof of a permanent copy. | **Dangerous deletion fixed; full permanent-copy verification remains open.** Drive object verification and transition to permanent_copy_verified are not implemented. |
 | SEC-07 — deployed configuration unverified | No production or non-production project inspection was performed. | **Open — mandatory non-production verification.** |
 | SEC-08 — report access via any common space | Partner policy requires exactly two members and space_type='shared'. | **Source fix added; test required.** |
-| SEC-09 — shared history after disconnection | Detached archive, two participant slots, calendar snapshot mirror, archive read policy, and MFA + typed-confirmation end_shared_connection RPC. Ended archive becomes read-only; membership removal does not delete the archive participant record. | **Source remediation added for shared calendar only; test required.** App UI and other shared data types still need integration. |
-| SEC-10 — unbounded text / write abuse | Space name 1–80 chars; activity note <=1,000 chars. | **Partially fixed.** Per-user/per-space activity rate limits and other future metadata bounds remain. |
+| SEC-09 — shared history after disconnection | Detached archive, two participant slots, calendar snapshot mirror, archive read policy, and MFA + typed-confirmation end_shared_connection RPC. Ended archive becomes read-only; membership removal does not delete the archive participant record. | **Source remediation added for shared calendar only; test required.** Shared-space UI now offers typed End Connection and shows read-only status; calendar creation UI becomes read-only. Other shared data types still need integration. |
+| SEC-10 — unbounded text / write abuse | Space name 1–80 chars; activity note <=1,000 chars; shared calendar insert rate limited to 100 per user per UTC day. | **Partially fixed.** Per-user/per-space activity rate limits and other future metadata bounds remain. |
 
 ## Files added or changed
 
 - supabase/migrations/202611080001_security_remediation.sql
 - supabase/migrations/202611080002_durable_shared_history.sql
 - supabase/migrations/202611080003_snap_lifecycle_hardening.sql
+- supabase/migrations/202611080004_report_and_write_limits.sql
 - supabase/functions/ack-snap/index.ts
 - supabase/functions/expire-stale-snaps/index.ts
+- app/shared.tsx
+- app/calendar.tsx
+- app/snaps.tsx
 
 ## Critical behavior changes
 
@@ -39,9 +43,9 @@ No SQL was executed against the configured Supabase project. No migration has be
 
 These are source changes, not verified deployed fixes. The migrations have not yet been executed by PostgreSQL. They must be reviewed and tested in a disposable non-production Supabase project before any deployment. In particular:
 - Archive coverage currently mirrors shared calendar activities, not future shared file/task/note tables.
-- The app must call the upload-lease renewal RPC during long-running uploads.
+- The app must call the upload-lease renewal RPC during long-running uploads. Invitation UI now accepts and displays 24-character codes.
 - Permanent Google Drive copy verification is not implemented; temporary Snap copies are intentionally retained after download.
-- The report JSON schema remains broader than the intended aggregate-only contract.
+- The report JSON schema is now restricted to numeric aggregate fields; confirm the field names match the final product contract before release.
 - Device key rotation/recovery is not implemented.
 - Deployment catalog/grant/storage/cron/secret verification remains outstanding.
 
