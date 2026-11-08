@@ -68,3 +68,37 @@ where n.nspname = 'public'
     'shared_archive_activities', 'shared_activity_daily_limits'
   )
 order by c.relname;
+
+
+-- 6) Verify the AAL2 write-guard trigger is attached to every intended table.
+-- A missing row or disabled trigger is a release blocker. Also inspect any
+-- additional user-writable shared table not represented in this list.
+select
+  n.nspname as schema_name,
+  c.relname as table_name,
+  t.tgname as trigger_name,
+  t.tgenabled as trigger_enabled,
+  pg_get_triggerdef(t.oid) as trigger_definition
+from pg_trigger t
+join pg_class c on c.oid = t.tgrelid
+join pg_namespace n on n.oid = c.relnamespace
+where not t.tgisinternal
+  and n.nspname = 'public'
+  and t.tgname like 'require_aal2_%'
+order by c.relname, t.tgname;
+
+-- 7) Inventory all user-facing public tables and their non-internal triggers.
+-- Use this alongside policies and grants to identify unguarded write paths.
+select
+  c.relname as table_name,
+  t.tgname as trigger_name,
+  t.tgenabled as trigger_enabled,
+  p.proname as trigger_function,
+  p.prosecdef as trigger_function_security_definer
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+left join pg_trigger t on t.tgrelid = c.oid and not t.tgisinternal
+left join pg_proc p on p.oid = t.tgfoid
+where n.nspname = 'public'
+  and c.relkind in ('r', 'p')
+order by c.relname, t.tgname;
