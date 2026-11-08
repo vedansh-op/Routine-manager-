@@ -25,20 +25,21 @@ The team has a coherent source inventory, ownership model, threat model, archive
 | Notification foundation | **Local source foundation present; OS testing open** | Local task/habit/routine/calendar/focus reminders, controls and actions exist. Persisted-state validation now has regression tests. Remote push, geofence/travel and advanced lifecycle features remain future integrations. |
 | SQL compilation and non-production RLS tests | **Open / external environment required** | No disposable Supabase project has applied migrations 001–013; PostgreSQL compilation, effective grants, two-account negatives and concurrency tests are unverified. |
 | Independent cryptographic review | **Open / external specialist required** | ChatGPT/source review is not a substitute for independent cryptographic review. The proposed key hierarchy/recovery envelope and a versioned Snap metadata-AAD migration must not be treated as approved until reviewed. |
-| Feature-branch APK build | **Complete** | Standalone debug APK built and embedded JavaScript bundle verified in run 42533640626; artifact is available from the run. It is a debug/test APK, not a Play Store build. |\n| Physical Android and two-device tests | **Open / physical devices required** | APK is built but has not been installed. SecureStore, notification delivery, MFA provider behavior, reboot, OEM battery restrictions and two-device Snap behavior remain untested. |
+| Feature-branch APK build | **Earlier revision complete; corrected revision building** | An older feature-branch APK was built in run 42533640626. A new APK using the corrected SQL migration and full test gate is building in run 42535468070. It is a debug/test APK, not a Play Store build. |\n| Physical Android and two-device tests | **Open / physical devices required** | No current APK has been installed. SecureStore, notification delivery, MFA provider behavior, reboot, OEM battery restrictions and two-device Snap behavior remain untested. |
 | Production deployment | **Intentionally not performed** | No production SQL, migration, Edge Function, Auth configuration, Storage object, cron, secret or live user data was changed or accessed. |
 
 ## 2. CI evidence
 
 The latest verified feature-branch commit passed the TypeScript validation workflow:
-- Commit: 1bab4deda75f2d345f41b3ad8f2f9c2e2a1532e7
-- Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42534451255
-- Verified successful job steps: dependency installation, TypeScript validation, recovery-state tests, notification-state tests, Snap crypto tests, and secure session storage tests.
+- Commit: d6fd62acd71bc81fc50a95cb3d0a4fdadb1f553a
+- Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42535477765
+- Verified successful job steps: dependency installation, TypeScript validation, recovery-state tests, notification-state tests, Snap crypto tests, secure session storage tests and database-source inventory tests.
 - Recovery-state suite: 27 tests passed.
 - Notification-state suite: 6 tests passed.
 - Snap crypto suite: 7 tests passed.
 - Secure session storage suite: 7 tests passed.
-- **Total: 47 automated tests passed across four suites.**
+- Database-source inventory suite: 7 tests passed, including migration delimiter, policy, privileged-function and AAL2 trigger inventory checks.
+- **Total: 54 automated tests passed across five suites.**
 
 Earlier red runs were caused by cross-realm strict assertions in the new test harness. The test assertions were corrected; the green run above is the evidence to use. Do not cite the earlier failed runs as current status.
 
