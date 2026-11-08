@@ -26,8 +26,9 @@ export default function MfaScreen() {
       if (error) throw error;
       // Reuse a pending factor instead of creating another enrollment. A pending
       // factor may exist if the app was closed before its first code was verified.
-      const existing = (data.totp ?? []).find(item => item.status === "verified")
-        ?? (data.totp ?? []).find(item => item.status === "unverified");
+      const totpFactors = (data.totp ?? []) as Factor[];
+      const existing = totpFactors.find(item => item.status === "verified")
+        ?? totpFactors.find(item => item.status === "unverified");
       if (existing) {
         setFactor(existing);
         setStage("verify");
