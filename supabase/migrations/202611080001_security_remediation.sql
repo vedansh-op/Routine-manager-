@@ -130,8 +130,8 @@ grant execute on function public.create_shared_space(text) to authenticated;
 grant execute on function public.join_shared_space(text) to authenticated;
 grant execute on function public.rotate_shared_invite() to authenticated;
 
--- SEC-03 partial mitigation: bound report size. The exact allow-list still needs
--- to be aligned with the app's canonical aggregate schema before release.
+-- SEC-03: bound serialized report size here; migration 202611080004 adds the
+-- strict allow-list aligned with the app's canonical aggregate schema.
 alter table public.weekly_reports
   drop constraint if exists weekly_reports_report_size_limit;
 alter table public.weekly_reports
