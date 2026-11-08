@@ -225,9 +225,9 @@ The engineering/design documents are prepared and linked below. The phase is not
 - [ ] Two-account concurrency, MFA/AAL2, Snap lifecycle and archive-retention tests in that project.
 - [ ] Physical Android install/reboot/SecureStore/notification/2-device tests.
 
-The latest verified TypeScript workflow run for the source/test changes is 42534451255 on commit 1bab4deda75f2d345f41b3ad8f2f9c2e2a1532e7. It passed TypeScript validation, 27 recovery tests, 6 notification-state tests, 7 Snap crypto tests and 7 secure session-storage tests (47 tests total). This is not PostgreSQL, provider or physical-device evidence.
+The latest verified TypeScript workflow run is 42535477765 on commit d6fd62acd71bc81fc50a95cb3d0a4fdadb1f553a. It passed TypeScript validation and 54 automated tests across five suites: 27 recovery, 6 notification-state, 7 Snap crypto, 7 secure session storage and 7 database-source inventory tests. The static SQL suite does not compile PostgreSQL or prove deployed grants/policies; disposable Supabase and device validation remain open.
 
-The standalone current-branch debug APK was also built successfully in run 42533640626 and uploaded as artifact ONE-OS-debug-apk; it still needs physical installation/testing. The authoritative decision and exact external gates are in ONE_OS_PHASE_1_EXIT_REVIEW.md. No production SQL or service deployment is authorized by completing this document.
+An earlier standalone feature-branch APK was built in run 42533640626. A newer APK build that includes the SQL correction and all five suites is running in 42535468070; it still needs physical installation/testing. The authoritative decision and exact external gates are in ONE_OS_PHASE_1_EXIT_REVIEW.md. No production SQL or service deployment is authorized by completing this document.
 
 ## 13. Implementation sequence after Phase 1
 
