@@ -54,9 +54,25 @@ function fromHex(value: string): Uint8Array {
   return Uint8Array.from(value.match(/.{2}/g) ?? [], part => parseInt(part, 16));
 }
 
+/** Refuses account-switched or downgraded sessions before touching account keys or registering them. */
+async function assertActiveAal2User(expectedUserId: string): Promise<void> {
+  if (!supabase) throw new Error("Connect Supabase before registering a device key.");
+  const { data: identity, error: identityError } = await supabase.auth.getUser();
+  if (identityError) throw identityError;
+  if (identity.user?.id !== expectedUserId) {
+    throw new Error("Your account changed. Sign in again before registering this device.");
+  }
+  const { data: assurance, error: assuranceError } =
+    await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (assuranceError) throw assuranceError;
+  if (assurance.currentLevel !== "aal2") {
+    throw new Error("Complete multi-factor authentication before registering this device.");
+  }
+}
+
 /** Keeps each account's X25519 private key in Android Keystore and publishes only the public key. */
 async function createDeviceCryptoKey(userId: string): Promise<DeviceCryptoKey> {
-  if (!supabase) throw new Error("Connect Supabase before registering a device key.");
+  await assertActiveAal2User(userId);
   const deviceAlias = "one-os-snap-device:" + userId;
   const secretAlias = "one-os-snap-x25519:" + userId;
   let deviceId = await SecureStore.getItemAsync(deviceAlias);
@@ -82,7 +98,9 @@ async function createDeviceCryptoKey(userId: string): Promise<DeviceCryptoKey> {
 
   const publicKey = x25519.getPublicKey(secretKey);
   const publicKeyHex = toHex(publicKey);
-  const { error } = await supabase.rpc("register_device_crypto_key", {
+  // Re-check after asynchronous SecureStore operations, immediately before the authenticated RPC.
+  await assertActiveAal2User(userId);
+  const { error } = await supabase!.rpc("register_device_crypto_key", {
     p_device_id: deviceId,
     p_public_key: publicKeyHex,
   });
