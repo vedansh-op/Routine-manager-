@@ -310,6 +310,12 @@ export async function reconcileScheduledNotifications(userId: string | null) {
       owned.delete(reminder.id);
       continue;
     }
+    if (reminder.repeat.kind === "once" && new Date(reminder.repeat.date).getTime() <= Date.now()) {
+      reminder.notificationId = null;
+      reminder.enabled = false;
+      changed = true;
+      continue;
+    }
     try {
       const nextId = await scheduleNative(userId, reminder, state.settings);
       if (reminder.notificationId !== nextId) {
