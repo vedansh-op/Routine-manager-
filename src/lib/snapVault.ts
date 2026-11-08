@@ -47,6 +47,13 @@ function isLocalSnapRecord(value: unknown): value is LocalSnap {
   return item.direction === "sent" || item.direction === "received";
 }
 
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) difference |= left[index] ^ right[index];
+  return difference === 0;
+}
+
 async function readIndex(userId: string): Promise<LocalSnap[]> {
   const raw = await getEncryptedItem(indexKey(userId), userId);
   if (!raw) return [];
@@ -91,19 +98,38 @@ export async function saveLocalSnap(
       throw new Error("This private memory is already saved on this device.");
     }
 
-    // Finish encryption before opening the target file, so key failures
-    // cannot truncate an existing memory.
+    const record: LocalSnap = { id, deliveryId, fileUri: localSnapFile(userId, id).uri, mimeType, capturedAt, direction };
+    if (!isLocalSnapRecord(record)) throw new Error("The private memory details are invalid.");
+
+    const directory = vaultDirectory(userId);
+    directory.create({ idempotent: true, intermediates: true });
+    const file = localSnapFile(userId, id);
+
+    // A crash may occur after the encrypted file is durable but before its
+    // index entry is committed. Recover only when authenticated decryption
+    // succeeds and the recovered bytes exactly match this retry's input.
+    if (file.exists) {
+      const orphanCiphertext = await file.bytes();
+      let recovered: Uint8Array | null = null;
+      try {
+        recovered = await decryptLocalBytes(userId, orphanCiphertext);
+        if (!sameBytes(recovered, plaintext)) {
+          throw new Error("An unindexed private photo already exists with different contents. It was preserved; manual recovery is required.");
+        }
+        await setEncryptedItem(indexKey(userId), userId, JSON.stringify([record, ...existing]));
+        return record;
+      } finally {
+        orphanCiphertext.fill(0);
+        recovered?.fill(0);
+      }
+    }
+
+    // Finish encryption before creating the target file.
     const encryptedAtRest = await encryptLocalBytes(userId, plaintext);
     try {
-      const directory = vaultDirectory(userId);
-      directory.create({ idempotent: true, intermediates: true });
-      const file = localSnapFile(userId, id);
       file.create({ intermediates: true, overwrite: false });
       await file.write(encryptedAtRest);
-
-      const record: LocalSnap = { id, deliveryId, fileUri: file.uri, mimeType, capturedAt, direction };
-      const next = [record, ...existing];
-      await setEncryptedItem(indexKey(userId), userId, JSON.stringify(next));
+      await setEncryptedItem(indexKey(userId), userId, JSON.stringify([record, ...existing]));
       return record;
     } finally {
       encryptedAtRest.fill(0);
