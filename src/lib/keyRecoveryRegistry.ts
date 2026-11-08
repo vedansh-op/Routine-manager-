@@ -150,17 +150,19 @@ export async function inspectLocalEncryptedData(userId: string): Promise<LocalEn
       result.snapVault = "unknown";
     } else {
       const documentEntries = documents.list();
-      const vaultRoot = documentEntries.find(
+      const vaultRootEntry = documentEntries.find(
         entry => entry instanceof Directory && entry.name === "oneos-private-snaps",
       );
+      const vaultRoot = vaultRootEntry instanceof Directory ? vaultRootEntry : null;
       if (!vaultRoot) {
         result.snapVault = "empty-visible";
         result.snapVaultFileCount = 0;
       } else {
         const userEntries = vaultRoot.list();
-        const userDirectory = userEntries.find(
+        const userDirectoryEntry = userEntries.find(
           entry => entry instanceof Directory && entry.name === userId,
         );
+        const userDirectory = userDirectoryEntry instanceof Directory ? userDirectoryEntry : null;
         if (!userDirectory) {
           result.snapVault = "empty-visible";
           result.snapVaultFileCount = 0;
