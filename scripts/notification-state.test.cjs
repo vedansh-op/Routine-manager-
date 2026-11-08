@@ -121,7 +121,7 @@ test("notification preferences fall back safely when persisted values are malfor
   assert.equal(result.settings.calendarLeadMinutes, 15);
   assert.equal(result.settings.categoryEnabled.task, false);
   assert.equal(result.settings.categoryEnabled.habit, true);
-  assert.deepEqual(result.settings.quietHours, {
+  assert.equal(JSON.stringify(result.settings.quietHours), JSON.stringify({
     enabled: true, startHour: 22, startMinute: 0, endHour: 7, endMinute: 15,
-  });
+  }));
 });
