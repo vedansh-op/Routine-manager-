@@ -10,6 +10,7 @@ export default function MfaScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [factor, setFactor] = useState<Factor | null>(null);
+  const [verifiedFactors, setVerifiedFactors] = useState<Factor[]>([]);
   const [secret, setSecret] = useState("");
   const [code, setCode] = useState("");
   const [challengeId, setChallengeId] = useState("");
@@ -27,8 +28,9 @@ export default function MfaScreen() {
       // Reuse a pending factor instead of creating another enrollment. A pending
       // factor may exist if the app was closed before its first code was verified.
       const totpFactors = (data.totp ?? []) as Factor[];
-      const existing = totpFactors.find(item => item.status === "verified")
-        ?? totpFactors.find(item => item.status === "unverified");
+      const verified = totpFactors.filter(item => item.status === "verified");
+      setVerifiedFactors(verified);
+      const existing = verified[0] ?? totpFactors.find(item => item.status === "unverified");
       if (existing) {
         setFactor(existing);
         setStage("verify");
@@ -112,6 +114,14 @@ export default function MfaScreen() {
           <Text selectable style={s.secret}>{secret}</Text>
           <Text style={s.body}>In your authenticator app, add an account manually using this key. Keep it private. Then enter the six-digit code below.</Text>
         </View> : <View style={s.card}><Text style={s.body}>Open your authenticator app and enter the current six-digit ONE-OS code.</Text></View>}
+        {verifiedFactors.length > 1 ? <View style={s.card}>
+          <Text style={s.label}>CHOOSE AUTHENTICATOR</Text>
+          {verifiedFactors.map(item => <Pressable key={item.id} onPress={() => { setFactor(item); setChallengeId(""); setCode(""); }}>
+            <Text style={[s.body, { color: factor?.id === item.id ? "#c7bfff" : "#c3c5ce", fontWeight: factor?.id === item.id ? "800" : "400" }]}>
+              {(item.friendly_name || "ONE-OS authenticator")}{factor?.id === item.id ? "  ✓" : ""}
+            </Text>
+          </Pressable>)}
+        </View> : null}
         <TextInput value={code} onChangeText={value => setCode(value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" placeholderTextColor="#777d8c" keyboardType="number-pad" textContentType="oneTimeCode" maxLength={6} style={s.input}/>
         <Pressable disabled={busy || code.length !== 6} onPress={verify} style={[s.primary, (busy || code.length !== 6) && { opacity: 0.55 }]}><Text style={s.primaryText}>{busy ? "Verifying…" : "Verify and continue"}</Text></Pressable>
         {secret ? <Pressable onPress={() => { setSecret(""); setCode(""); setChallengeId(""); void refresh(); }}><Text style={s.action}>I already have an authenticator</Text></Pressable> : null}
