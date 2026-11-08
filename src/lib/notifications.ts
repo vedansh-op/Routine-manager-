@@ -453,6 +453,9 @@ export async function scheduleReminder(userId: string, draft: ReminderDraft) {
   const existing = draft.sourceKey
     ? state.reminders.find(item => item.sourceKey === draft.sourceKey)
     : undefined;
+  if (!existing && state.reminders.length >= 200) {
+    throw new Error("Your local reminder limit is 200. Remove an old reminder before adding another.");
+  }
   const reminder: Reminder = {
     id: existing?.id ?? makeId(),
     category: draft.category,
@@ -546,6 +549,9 @@ export async function snoozeReminder(userId: string, reminderId: string, minutes
   const state = await loadState(userId);
   const reminder = state.reminders.find(item => item.id === reminderId);
   if (!reminder || reminder.completed) return;
+  if (state.reminders.length >= 200) {
+    throw new Error("Your local reminder limit is 200. Remove an old reminder before snoozing.");
+  }
 
   // Keep a recurring source reminder intact. Snoozing creates a separate
   // one-off alert; a one-time source is paused only after the snooze is saved.
@@ -563,6 +569,9 @@ export async function snoozeReminder(userId: string, reminderId: string, minutes
     createdAt: new Date().toISOString(),
   };
   snoozed.notificationId = await scheduleNative(userId, snoozed, state.settings);
+  if (!snoozed.notificationId) {
+    throw new Error("This reminder category is switched off, so it cannot be snoozed.");
+  }
   if (isOneTime) {
     reminder.notificationId = null;
     reminder.enabled = false;
