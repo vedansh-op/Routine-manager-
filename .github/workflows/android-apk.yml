@@ -48,6 +48,9 @@ jobs:
       - name: Run Snap crypto tests
         run: npm run test:crypto
 
+      - name: Run secure session storage tests
+        run: npm run test:session
+
       - name: Generate native Android project
         run: npx expo prebuild --platform android --non-interactive
 
