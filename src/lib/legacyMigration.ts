@@ -44,7 +44,9 @@ export function migrateLegacyRecordForUser(
     const currentLegacy = await storage.getItem(LEGACY_KEY);
     if (!shouldContinue() || currentLegacy === null) return false;
     await persistEncrypted(currentLegacy);
-    if (!shouldContinue()) return false;
+    // Once the encrypted, account-scoped copy is committed, finish removing
+    // the plaintext source even if sign-out happens during that final write.
+    // The owner marker and destination key are both bound to this user.
     await storage.removeItem(LEGACY_KEY);
     return true;
   });
