@@ -126,7 +126,7 @@ function SessionGate() {
           response.actionIdentifier === "OPEN"
         ) {
           await recordNotificationHistory(user.id, { ...historyEntry, event: "opened" });
-          const allowedRoutes = ["/", "/tasks", "/habits", "/calendar", "/notifications", "/shared"];
+          const allowedRoutes = ["/", "/tasks", "/habits", "/calendar", "/notifications", "/focus", "/shared"];
           const target = typeof data.route === "string" && allowedRoutes.includes(data.route)
             ? data.route
             : "/notifications";
