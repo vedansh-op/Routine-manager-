@@ -4,6 +4,8 @@ import { useRouter } from "expo-router";
 import { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/auth/AuthProvider";
+import { useAppStore } from "@/store/AppStore";
+import { getNotificationPermission, scheduleReminder } from "@/lib/notifications";
 import {
   DEFAULT_PARTNER_TIME_ZONE,
   formatInTimeZone,
@@ -37,6 +39,7 @@ function dateKey(year: number, month: number, day: number) {
 export default function ActivityCalendarScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { canEdit } = useAppStore();
   const zone = getDeviceTimeZone();
   const now = new Date();
   const [month, setMonth] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
@@ -75,6 +78,47 @@ export default function ActivityCalendarScreen() {
   }, [user]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const syncLocalCalendarAlerts = async () => {
+      if (!user?.id || !canEdit || activities.length === 0) return;
+      try {
+        const permission = await getNotificationPermission();
+        if (!permission.granted || cancelled) return;
+        const now = Date.now();
+        const horizon = now + 30 * 24 * 60 * 60 * 1000;
+        const upcoming = activities
+          .filter(item => {
+            const startsAt = new Date(item.starts_at).getTime();
+            return Number.isFinite(startsAt) && startsAt > now + 30_000 && startsAt <= horizon;
+          })
+          .slice(0, 40);
+        for (const item of upcoming) {
+          if (cancelled) return;
+          const startsAt = new Date(item.starts_at).getTime();
+          const alertAt = Math.max(now + 30_000, startsAt - 15 * 60_000);
+          try {
+            await scheduleReminder(user.id, {
+              category: "calendar",
+              title: item.title,
+              body: "Your shared calendar event starts soon.",
+              route: "/calendar",
+              sourceKey: "calendar:" + item.id,
+              repeat: { kind: "once", date: new Date(alertAt).toISOString() },
+            });
+          } catch {
+            // Calendar browsing must continue even when reminders are disabled,
+            // permission is denied, or an individual event is not schedulable.
+          }
+        }
+      } catch {
+        // The calendar remains usable when notification services are unavailable.
+      }
+    };
+    void syncLocalCalendarAlerts();
+    return () => { cancelled = true; };
+  }, [activities, user?.id, canEdit]);
 
   const cells = useMemo(() => monthCells(month.getFullYear(), month.getMonth()), [month]);
   const activityDates = useMemo(() => new Set(activities.map(item => getDateKeyInTimeZone(new Date(item.starts_at), zone))), [activities, zone]);
