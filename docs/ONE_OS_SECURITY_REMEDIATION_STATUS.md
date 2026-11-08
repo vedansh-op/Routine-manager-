@@ -1,6 +1,6 @@
 # ONE-OS security remediation status — 8 November 2026
 
-This status covers the four additive security migrations and two updated Snap Edge Functions on the Phase 1 feature branch. The shared-history migration's two malformed function terminators were corrected; SQL compilation still requires non-production PostgreSQL validation.
+This status covers the four additive security migrations and two updated Snap Edge Functions on the Phase 1 feature branch. The shared-history migration's two malformed function terminators and the weekly-report migration's malformed function terminator were corrected; static delimiter checks now pass for all nine migration files. SQL compilation still requires non-production PostgreSQL validation.
 
 ## Finding-by-finding status
 
