@@ -4,7 +4,9 @@ import { AppState } from "react-native";
 import { useAuth } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
 import { ensureDeviceCryptoKey } from "@/lib/deviceCrypto";
-import { getEncryptedItem, setEncryptedItem } from "@/lib/secureLocalStore";
+import { getEncryptedItem, initializeUserKeyForFreshInstall, setEncryptedItem } from "@/lib/secureLocalStore";
+import { inspectLegacyDeviceKey, inspectLocalEncryptedData } from "@/lib/keyRecoveryRegistry";
+import { classifyRecoveryBootstrapState } from "@/lib/keyRecoveryState";
 
 export type Task = { id: string; title: string; notes?: string; dueDate?: string; completed: boolean; createdAt: string };
 export type Habit = { id: string; title: string; createdAt: string; archived: boolean };
@@ -84,6 +86,24 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
 
     (async () => {
       try {
+        // Inspect local keys and ciphertext before any path can create a key or
+        // write an empty store. Missing keys beside encrypted data must stop
+        // startup and preserve the original files for recovery.
+        const [deviceInspection, dataInventory] = await Promise.all([
+          inspectLegacyDeviceKey(userId),
+          inspectLocalEncryptedData(userId),
+        ]);
+        const bootstrapState = classifyRecoveryBootstrapState(deviceInspection, dataInventory);
+        if (bootstrapState === "fresh-candidate") {
+          await initializeUserKeyForFreshInstall(userId);
+        } else if (bootstrapState !== "ready") {
+          throw new Error(
+            bootstrapState === "recover-existing"
+              ? "Encrypted local data exists but its key is missing or invalid. Your data has been preserved; account recovery is required before continuing."
+              : "Local security storage could not be verified. Your data has been left unchanged; please try again or contact support.",
+          );
+        }
+
         const scopedKey = keyForUser(userId);
         let raw = await getEncryptedItem(scopedKey, userId);
         if (!raw) {
