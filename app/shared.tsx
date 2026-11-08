@@ -14,6 +14,8 @@ export default function SharedSpaceScreen() {
   const [generatedCode, setGeneratedCode] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [busy, setBusy] = useState(false);
+  const [connectionEnded, setConnectionEnded] = useState(false);
+  const [endPhrase, setEndPhrase] = useState("");
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -25,7 +27,16 @@ export default function SharedSpaceScreen() {
       .limit(1)
       .maybeSingle();
     if (error) Alert.alert("Couldn't load shared space", error.message);
-    else setMembership(data as Membership | null);
+    else {
+      setMembership(data as Membership | null);
+      if (data?.space_id) {
+        const { data: archive, error: archiveError } = await supabase
+          .from("shared_archives").select("ended_at")
+          .eq("source_space_id", data.space_id).maybeSingle();
+        if (archiveError) Alert.alert("Couldn't check connection status", archiveError.message);
+        setConnectionEnded(Boolean(archive?.ended_at));
+      } else setConnectionEnded(false);
+    }
     setLoading(false);
   }, [user]);
 
@@ -63,6 +74,26 @@ export default function SharedSpaceScreen() {
     } finally { setBusy(false); }
   }
 
+  async function endConnection() {
+    if (!supabase || !membership) return;
+    if (endPhrase !== "END CONNECTION") {
+      return Alert.alert("Confirmation does not match", "Type END CONNECTION exactly to continue.");
+    }
+    setBusy(true);
+    try {
+      const { error } = await supabase.rpc("end_shared_connection", {
+        p_space_id: membership.space_id,
+        p_confirmation: endPhrase,
+      });
+      if (error) throw error;
+      setEndPhrase("");
+      await refresh();
+      Alert.alert("Connection ended", "Future shared updates and Snap sends are stopped. Your existing shared calendar history remains available as read-only.");
+    } catch (error) {
+      Alert.alert("Couldn't end connection", error instanceof Error ? error.message : "Please try again. Recent multi-factor authentication is required.");
+    } finally { setBusy(false); }
+  }
+
   async function joinSpace() {
     const code = inviteCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (code.length !== 24) return Alert.alert("Check the code", "Enter the 24-character invitation code.");
@@ -90,12 +121,20 @@ export default function SharedSpaceScreen() {
       <Text style={s.spaceName}>{membership.spaces?.name ?? "Our shared space"}</Text>
       <Text style={s.copy}>You're connected as {membership.role}. Shared features will appear here as they are enabled.</Text>
       <Text style={s.meta}>Space ID</Text><Text selectable style={s.id}>{membership.space_id}</Text>
-      {membership.role === "owner" ? <>
+      {connectionEnded ? <View style={s.codePanel}><Text style={s.label}>READ-ONLY HISTORY</Text><Text style={s.copy}>This connection has ended. Existing shared calendar history is retained, but new shared updates and Snap sends are stopped.</Text></View> : membership.role === "owner" ? <>
         <Text style={s.copy}>Lost the code or did it expire? You can issue a replacement before your partner joins. Any older unused code will stop working.</Text>
         <Pressable disabled={busy} onPress={() => void renewInvite()} style={[s.secondary, busy && s.disabled]}>
           {busy ? <ActivityIndicator color="#d8d1ff" /> : <Text style={s.secondaryText}>Generate replacement code</Text>}
         </Pressable>
       </> : null}
+      <View style={s.codePanel}>
+        <Text style={s.label}>END CONNECTION</Text>
+        <Text style={s.copy}>This stops future shared updates. Existing shared calendar history remains read-only. Your account must have recent multi-factor authentication.</Text>
+        <TextInput value={endPhrase} onChangeText={setEndPhrase} placeholder="Type END CONNECTION" placeholderTextColor="#777d8c" autoCapitalize="characters" autoCorrect={false} style={s.input} />
+        <Pressable disabled={busy || connectionEnded || endPhrase !== "END CONNECTION"} onPress={() => void endConnection()} style={[s.secondary, (busy || connectionEnded || endPhrase !== "END CONNECTION") && s.disabled]}>
+          <Text style={s.secondaryText}>Confirm End Connection</Text>
+        </Pressable>
+      </View>
       {!!generatedCode && <View style={s.codePanel}>
         <Text style={s.label}>YOUR INVITATION CODE</Text>
         <Text selectable style={s.code}>{generatedCode}</Text>
