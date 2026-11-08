@@ -99,3 +99,19 @@ ONE-OS remains **not ready for production release**. The strict security audit g
 - This is intentionally an inventory, not an automatic pass/fail verdict. PostgreSQL permissive policies combine with OR, so reviewers must inspect every policy on each table, not only the ONE-OS policy names.
 - Static review note: `member_presence` has RLS enabled and no client-facing SELECT policy in the migrations reviewed. That is fail-closed for ordinary client reads; confirm no app feature relies on direct presence reads and verify the deployed grants/policies in a non-production project.
 - Run this audit alongside `supabase/tests/one_os_storage_policy_audit.sql` before considering the database security review complete. No production SQL has been executed.
+
+
+## Newly confirmed release blockers — recovery and account lifecycle
+
+| Finding | Source evidence | Required safe action | Status |
+|---|---|---|---|
+| SEC-19 — no recoverable encryption-key ceremony | `src/lib/secureLocalStore.ts` creates a random per-account local data key and stores it only in device SecureStore. `src/lib/deviceCrypto.ts` similarly stores the X25519 private key only on the device. Both use device-only accessibility. There is no recovery-key wrapping, encrypted key export/import, recovery-code validation, or authenticated device-replacement flow. | Design and independently review a recovery protocol before implementing it. Each partner's recovery secret must be independent, high entropy, shown once, stored safely by the user, and used to unwrap a separately encrypted copy of the relevant data keys. Never upload plaintext recovery secrets or private keys. Include revocation of lost device registrations and re-verification of partner fingerprints after rotation. | **Open — release blocker.** Do not claim encrypted local data or old Snap deliveries are recoverable after device loss/reinstall. |
+| SEC-20 — account deletion lifecycle is not implemented in the app | `app/account.tsx` currently exposes account identity and sign-out only. There is no delayed 7-day deletion request, re-authentication/MFA confirmation, cancellation window, scheduled Auth deletion, or UI explaining the effect on retained shared archives. | Implement only after deletion semantics are tested end-to-end: re-authenticate with MFA, create a pending deletion request with a server-enforced 7-day grace period, restrict cancellation to the account owner during that period, then perform deletion through a trusted server process. Preserve the detached shared archive and the other participant's access. | **Open — release blocker.** No account deletion action is currently exposed in the app. |
+
+### Recovery and deletion verification additions
+
+20. On device A, create encrypted local data and a Snap key; verify a fresh install/device B cannot decrypt it without the approved recovery ceremony. Verify correct recovery restores access and wrong recovery material fails closed.
+21. Rotate/revoke a device only after the recovery ceremony; verify the old device can no longer register or send, and partner-key fingerprint changes require explicit re-verification.
+22. Request account deletion; verify MFA is required, deletion is delayed for exactly 7 days, only the owner can cancel during the grace period, and final deletion does not erase the other participant's detached shared calendar archive.
+23. Confirm no client-side code can directly delete Auth users or bypass the server-enforced deletion schedule.
+
