@@ -62,6 +62,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       receivedAuthEvent = true;
       if (alive) {
         setSession(nextSession);
+        // A signed-out account must never inherit a previous account's
+        // password-recovery mode.
+        if (_event === "SIGNED_OUT") setRecovery(false);
         setLoading(false);
       }
     });
