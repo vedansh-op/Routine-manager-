@@ -61,18 +61,50 @@ The recovery envelope is a small key backup, not a substitute for the encrypted 
 - Do not upload a key envelope before explicit user consent to recovery setup and Drive destinations.
 - Do not add a custom server boolean that claims recovery succeeded. The client must cryptographically authenticate the envelope; server authorization must separately enforce account ownership, AAL2, active space/device constraints, and rate limits.
 
-## 5. Required server/data design before implementation
+## 5. Server-side historical Snap authorization — selected design
 
-A later migration and RPC review must define:
-- how a new active device can request the user's own retained Snap ciphertext addressed to a prior device ID without weakening partner isolation;
-- how the old revoked device ID remains revoked and visible in audit history;
-- whether Snap metadata is re-addressed to the new device ID or a dedicated historical-key access mapping is used;
-- how multiple historical device keys and future key rotation are represented;
-- how RLS and Storage policies authorize only the authenticated recipient's own deliveries;
-- how recovery attempts are rate-limited and audited;
-- how concurrent recovery, lost/revoked devices, and partially restored archives behave.
+### Do not weaken the Storage policy
 
-No policy should grant broad access to all ciphertext for a user merely because the client claims it decrypted a recovery envelope.
+The existing Storage policy requires a delivery's original `recipient_device_id` to reference a non-revoked key row. A revoked historical key therefore remains blocked. Do not clear `revoked_at`, rewrite old delivery rows, or register the restored historical key as a new active device.
+
+The replacement phone receives a fresh random installation device ID and fresh active X25519 keypair. The restored historical X25519 private key is kept as a separate **decrypt-only historical key** in SecureStore; it is not registered as an active delivery destination. The new public key is registered normally. This keeps new incoming Snaps addressed to the new key while historical envelopes remain bound to the old key.
+
+### Use a narrowly scoped recovery-download Edge Function
+
+Keep the Storage bucket private and do not add a broad Storage SELECT policy. Add a dedicated Edge Function (design name: `recover-snap-download`) that uses the service role only after all checks below. It returns a short-lived signed URL for one exact ciphertext object; it never returns plaintext or a private key.
+
+**Challenge issuance:**
+1. Require a valid user JWT, verified email, and AAL2.
+2. Require a currently active replacement device row owned by that user.
+3. Require a historical device-key row owned by the same user. It may be revoked; its public key remains available only to this recovery flow, not partner discovery.
+4. Require the requested Snap delivery to have `recipient_id = auth.uid()`, `recipient_device_id = historical_device_id`, a retained ciphertext state (`pending` or `downloaded`), and a non-null object path.
+5. Generate a random one-time challenge nonce and two ephemeral X25519 server keypairs. Compute one shared secret against the replacement device's registered public key and one against the historical key's public key. Derive a context-bound expected proof with HKDF-SHA256 + HMAC-SHA256 over challenge ID, nonce, account ID, new device ID, historical device ID, and delivery ID. Persist only the expected proof hash, IDs, and short expiry in a private server-only challenge table; discard ephemeral server private keys immediately. Return the two ephemeral public keys, nonce, challenge ID, and expiry.
+
+**Proof and download:**
+6. The replacement app computes both X25519 shared secrets locally, derives the same context-bound HMAC proof, and submits it with the challenge ID.
+7. The Edge Function rechecks JWT identity, verified email, AAL2, active replacement device, historical key ownership, delivery ownership/state, expiry, and one-time challenge status. Compare proof hashes in constant time, consume the challenge atomically, and rate-limit attempts.
+8. Only after successful proof, create a signed URL for the exact stored `object_path` with a very short expiry (for example 60 seconds). Log an audit event containing user ID, new device ID, historical key ID, delivery ID, and timestamp — never the proof, shared secret, private key, recovery secret, or signed URL.
+9. The app downloads ciphertext, decrypts it locally using the restored historical private key, verifies AEAD authentication, and saves it into the local vault using the restored local data key. Failed decryptions do not delete or alter the server object. Each delivery is independently authorized; paginate and rate-limit.
+
+This is a possession proof for both the currently registered replacement key and the restored historical key. It does not trust a client boolean such as `recovery_succeeded=true`. A stolen account session alone is insufficient to obtain historical ciphertext unless the caller also proves possession of both private keys. A signed URL is a short-lived bearer credential, so it must not be logged, persisted, or shared.
+
+### New server-side records and constraints
+
+A later migration must define a private challenge table with:
+- random challenge UUID primary key;
+- `user_id`, `active_device_id`, `historical_device_id`, and `delivery_id`;
+- expected proof hash only;
+- created/expiry/consumed timestamps and bounded attempt count;
+- no client SELECT/INSERT/UPDATE/DELETE grants or RLS policies exposing rows;
+- cleanup of expired/consumed challenges.
+
+A separate audit table should record successful and failed recovery attempts with bounded metadata. The Edge Function must be the only writer/reader via service role; validate every field and enforce per-user and per-device rate limits. Challenge consumption and successful authorization must be atomic to prevent replay or concurrent double use.
+
+### Important limitation
+
+This design deliberately does not restore historical access by editing `snap_deliveries.recipient_device_id`. It also does not grant the new phone permanent direct Storage access to all historical ciphertext. It authorizes a specific user's specific retained delivery only after dual-key possession proof. Existing Storage RLS remains unchanged.
+
+Multiple historical keys are represented by their existing device-key rows. Key rotation and re-wrapping old file keys remain a separate protocol and are not part of this recovery-download path.
 
 ## 6. Test gate
 
