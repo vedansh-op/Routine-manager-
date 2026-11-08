@@ -44,7 +44,7 @@ The app code itself does not enforce the agreed mandatory email-verification rul
 3. Verify the Supabase project's email-confirmation setting in a disposable test project.
 4. Test signup, resend, expired link, PKCE/deep link, and sign-in before verification.
 
-**Status: OPEN — remote Auth configuration unknown.**
+**Status: PARTIALLY IMPLEMENTED — `app/_layout.tsx` now routes sessions without `email_confirmed_at` to `app/verify-email.tsx`, which supports resend and refresh/recheck. This is a client-side guard only. The Supabase project's Confirm Email setting, email templates/redirect allow-list, and server-side enforcement remain unverified; non-production signup/deep-link tests are required.**
 
 ### AUTH-03 — Session persistence uses AsyncStorage
 
@@ -94,6 +94,7 @@ Complete and independently review the recovery-key/key-wrapping design before en
 ## MFA implementation added on feature branch
 
 - `app/mfa.tsx` adds TOTP enrollment using a manually entered authenticator setup key, challenge, and six-digit verification. It does not display a QR code.
+- `app/_layout.tsx` checks `email_confirmed_at` and routes unverified sessions to `/verify-email` before allowing MFA or app access. `app/verify-email.tsx` supports resending the signup confirmation and refreshing the session after the user opens the email link.
 - `app/_layout.tsx` checks Supabase Auth assurance level and routes non-AAL2 sessions to `/mfa`; protected screens are held behind a loading gate while assurance is checked. Device heartbeat/key registration runs only at AAL2.
 - The new database trigger guard adds server-side AAL2 enforcement for the listed sensitive table writes, including writes made through SECURITY DEFINER RPCs. This does not prove every RPC, Edge Function, Storage policy, or table is covered; a complete server-side inventory and non-production execution tests remain required. Supabase project MFA policy is not configured or verified here.
 - Recovery codes and factor replacement/recovery are not implemented.
