@@ -118,6 +118,62 @@ export default function NotificationsScreen() {
     }
   }
 
+  async function saveDailyPrompt(kind: "morning" | "evening", hour: number, minute: number) {
+    if (!user?.id) return;
+    const isMorning = kind === "morning";
+    setBusy(true);
+    try {
+      const reminder = await scheduleReminder(user.id, {
+        category: "briefing",
+        title: isMorning ? "Plan your day" : "Review your day",
+        body: isMorning
+          ? "Check today's tasks and habits, then choose your most important next step."
+          : "Look back at what you completed and prepare tomorrow's priorities.",
+        route: "/",
+        sourceKey: "builtin:" + kind + "-planning",
+        repeat: { kind: "daily", hour, minute },
+      });
+      setReminders(old => [reminder, ...old.filter(item => item.id !== reminder.id)].slice(0, 200));
+    } catch (error) {
+      Alert.alert("Couldn't save daily prompt", error instanceof Error ? error.message : "Check notification permissions and briefing settings.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function chooseDailyPromptTime(kind: "morning" | "evening") {
+    const key = "builtin:" + kind + "-planning";
+    const current = reminders.find(item => item.sourceKey === key);
+    const time = current?.repeat.kind === "daily"
+      ? clockDate(current.repeat.hour, current.repeat.minute)
+      : clockDate(kind === "morning" ? 8 : 20, 0);
+    DateTimePickerAndroid.open({
+      value: time,
+      mode: "time",
+      is24Hour: false,
+      onChange: (event, selected) => {
+        if (event.type !== "set" || !selected) return;
+        void saveDailyPrompt(kind, selected.getHours(), selected.getMinutes());
+      },
+    });
+  }
+
+  async function disableDailyPrompt(kind: "morning" | "evening") {
+    if (!user?.id) return;
+    const key = "builtin:" + kind + "-planning";
+    const reminder = reminders.find(item => item.sourceKey === key);
+    if (!reminder) return;
+    setBusy(true);
+    try {
+      await cancelReminder(user.id, reminder.id);
+      setReminders(old => old.filter(item => item.id !== reminder.id));
+    } catch (error) {
+      Alert.alert("Couldn't turn off daily prompt", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function addReminder() {
     if (!user?.id) return;
     if (!title.trim()) {
@@ -272,6 +328,25 @@ export default function NotificationsScreen() {
         <Text style={[s.state, settings.categoryEnabled[item] ? s.on : s.off]}>{settings.categoryEnabled[item] ? "ON" : "OFF"}</Text>
       </Pressable>)}
     </View> : null}
+
+    <View style={s.card}>
+      <Text style={s.cardTitle}>Daily planning prompts</Text>
+      <Text style={s.mutedSmall}>Simple daily nudges. They do not bypass quiet hours or Android notification settings.</Text>
+      {(["morning", "evening"] as const).map(kind => {
+        const key = "builtin:" + kind + "-planning";
+        const current = reminders.find(item => item.sourceKey === key && item.enabled && !item.completed);
+        return <View key={kind} style={s.settingRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.settingTitle}>{kind === "morning" ? "Morning planning" : "Evening review"}</Text>
+            <Text style={s.mutedSmall}>{current ? reminderTime(current) : "Not scheduled"}</Text>
+          </View>
+          <Pressable disabled={busy} onPress={() => current ? void disableDailyPrompt(kind) : chooseDailyPromptTime(kind)}>
+            <Text style={[s.state, current ? s.on : s.off]}>{current ? "TURN OFF" : "SET TIME"}</Text>
+          </Pressable>
+          {current ? <Pressable disabled={busy} onPress={() => chooseDailyPromptTime(kind)}><Text style={s.refresh}>Change</Text></Pressable> : null}
+        </View>;
+      })}
+    </View>
 
     <View style={s.card}>
       <Text style={s.cardTitle}>Create a reminder</Text>
