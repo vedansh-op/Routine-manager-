@@ -27,6 +27,7 @@ export type Reminder = {
   body: string;
   route?: string;
   sourceKey?: string;
+  parentReminderId?: string;
   repeat: RepeatRule;
   notificationId: string | null;
   enabled: boolean;
@@ -177,6 +178,7 @@ function normalizeState(value: unknown): NotificationState {
         return typeof row.id === "string" && isCategory(row.category) &&
           typeof row.title === "string" && typeof row.body === "string" &&
           (row.sourceKey === undefined || typeof row.sourceKey === "string") &&
+          (row.parentReminderId === undefined || typeof row.parentReminderId === "string") &&
           typeof row.enabled === "boolean" && typeof row.completed === "boolean" &&
           (row.notificationId === null || typeof row.notificationId === "string") &&
           Boolean(row.repeat && typeof row.repeat === "object");
@@ -479,25 +481,46 @@ export async function scheduleReminder(userId: string, draft: ReminderDraft) {
 
 export async function cancelReminder(userId: string, reminderId: string) {
   return withNotificationQueue(async () => {
-  const state = await loadState(userId);
-  const reminder = state.reminders.find(item => item.id === reminderId);
-  if (!reminder) return;
-  if (reminder.notificationId) await Notifications.cancelScheduledNotificationAsync(reminder.notificationId);
-  state.reminders = state.reminders.filter(item => item.id !== reminderId);
-  await saveState(userId, state);
+    const state = await loadState(userId);
+    const targetIds = new Set([
+      reminderId,
+      ...state.reminders.filter(item => item.parentReminderId === reminderId).map(item => item.id),
+    ]);
+    for (const reminder of state.reminders) {
+      if (targetIds.has(reminder.id) && reminder.notificationId) {
+        await Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => undefined);
+      }
+    }
+    state.reminders = state.reminders.filter(item => !targetIds.has(item.id));
+    await saveState(userId, state);
   });
 }
 
 export async function completeReminder(userId: string, reminderId: string) {
   return withNotificationQueue(async () => {
-  const state = await loadState(userId);
-  const reminder = state.reminders.find(item => item.id === reminderId);
-  if (!reminder) return;
-  if (reminder.notificationId) await Notifications.cancelScheduledNotificationAsync(reminder.notificationId);
-  reminder.notificationId = null;
-  reminder.completed = true;
-  reminder.enabled = false;
-  await saveState(userId, state);
+    const state = await loadState(userId);
+    const reminder = state.reminders.find(item => item.id === reminderId);
+    if (!reminder) return;
+    const childReminders = state.reminders.filter(item => item.parentReminderId === reminderId);
+    for (const item of [reminder, ...childReminders]) {
+      if (item.notificationId) await Notifications.cancelScheduledNotificationAsync(item.notificationId).catch(() => undefined);
+      item.notificationId = null;
+      item.enabled = false;
+      item.completed = true;
+    }
+    await saveState(userId, state);
+  });
+}
+
+export async function cancelSnoozesForReminder(userId: string, reminderId: string) {
+  return withNotificationQueue(async () => {
+    const state = await loadState(userId);
+    const snoozes = state.reminders.filter(item => item.parentReminderId === reminderId);
+    for (const item of snoozes) {
+      if (item.notificationId) await Notifications.cancelScheduledNotificationAsync(item.notificationId).catch(() => undefined);
+    }
+    state.reminders = state.reminders.filter(item => item.parentReminderId !== reminderId);
+    await saveState(userId, state);
   });
 }
 
@@ -516,6 +539,7 @@ export async function snoozeReminder(userId: string, reminderId: string, minutes
     ...reminder,
     id: makeId(),
     sourceKey: undefined,
+    parentReminderId: reminder.parentReminderId ?? reminder.id,
     repeat: { kind: "once", date: new Date(Date.now() + minutes * 60_000).toISOString() },
     notificationId: null,
     enabled: true,
