@@ -32,8 +32,22 @@ const inventory = (overrides = {}) => ({
   ...overrides,
 });
 
-test("fresh candidate requires a positively visible empty inventory", () => {
+test("fresh candidate requires a positively visible empty vault and allows plaintext migration", () => {
   assert.equal(classifyRecoveryBootstrapState(device(), inventory()), "fresh-candidate");
+  assert.equal(
+    classifyRecoveryBootstrapState(
+      device(),
+      inventory({ legacyUnscopedAppStoreRecord: "present" }),
+    ),
+    "fresh-candidate",
+  );
+  assert.equal(
+    classifyRecoveryBootstrapState(
+      device(),
+      inventory({ appStoreRecord: "legacy-plaintext", snapIndex: "legacy-plaintext" }),
+    ),
+    "fresh-candidate",
+  );
   assert.equal(
     classifyRecoveryBootstrapState(device(), inventory({ snapVault: "not-visible" })),
     "needs-review",
@@ -61,7 +75,11 @@ test("existing encrypted data with a missing key requires recovery", () => {
   );
 });
 
-test("a valid active device and valid data key are ready", () => {
+test("a valid data key is usable even when the separate Snap device key is absent", () => {
+  assert.equal(
+    classifyRecoveryBootstrapState(device(), inventory({ dataKey: "present-valid" })),
+    "ready",
+  );
   assert.equal(
     classifyRecoveryBootstrapState(
       device("valid"),
@@ -92,5 +110,12 @@ test("revoked, malformed, and inconsistent key states fail closed", () => {
       inventory({ dataKey: "present-valid" }),
     ),
     "needs-review",
+  );
+  assert.equal(
+    classifyRecoveryBootstrapState(
+      device(),
+      inventory({ appStoreRecord: "encrypted" }),
+    ),
+    "recover-existing",
   );
 });
