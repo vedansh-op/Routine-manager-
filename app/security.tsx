@@ -63,7 +63,6 @@ export default function SecurityScreen() {
       setSecret("");
       setCode("");
       setPendingFactor(null);
-      setChallengeId("");
       await refresh();
       Alert.alert("Backup authenticator added", "Keep this authenticator separate from your primary one. It can help you regain MFA access, but it does not restore encrypted files if a device key is lost.");
     } catch (error) {
