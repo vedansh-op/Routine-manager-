@@ -54,3 +54,31 @@ comment on column public.device_crypto_keys.revoked_at is
   'Non-null means this device is revoked and must not receive new Snap keys or read Snap ciphertext.';
 comment on function public.revoke_device_crypto_key(text) is
   'AAL2-only self-service device revocation. Retains the registry row for audit and never exposes another account device.';
+
+
+-- A newly created delivery must target a currently active recipient device.
+create or replace function public.require_active_recipient_device_for_snap()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not exists (
+    select 1
+    from public.device_crypto_keys k
+    where k.user_id = new.recipient_id
+      and k.device_id = new.recipient_device_id
+      and k.revoked_at is null
+  ) then
+    raise exception 'Recipient device is unavailable or has been revoked';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.require_active_recipient_device_for_snap() from public, anon, authenticated;
+drop trigger if exists require_active_recipient_device_for_snap on public.snap_deliveries;
+create trigger require_active_recipient_device_for_snap
+before insert on public.snap_deliveries
+for each row execute function public.require_active_recipient_device_for_snap();
