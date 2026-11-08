@@ -18,6 +18,7 @@ on:
     paths:
       - "app/**"
       - "src/**"
+      - "scripts/**"
       - "package.json"
       - "package-lock.json"
       - "tsconfig.json"
