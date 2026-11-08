@@ -19,7 +19,38 @@ Relevant source:
 - `src/lib/snapVault.ts`
 - `app/snaps.tsx`
 
-## 2. Recommended recovery model
+## 2. Local key-storage changes required
+
+The current source has a single SecureStore alias per user for each key:
+- `one-os-snap-device:<userId>`
+- `one-os-snap-x25519:<userId>`
+- `one-os-data-key:<userId>`
+
+The current `ensureDeviceCryptoKey()` expects exactly one active device key and registers it on every startup. Recovery must not simply replace the values behind these aliases because that would conflate historical and active identity.
+
+The implementation must introduce an explicit versioned key registry in SecureStore, with separate namespaces for:
+- active installation identity and active X25519 private key;
+- zero or more historical decrypt-only X25519 private keys, keyed by their original device IDs;
+- the single account-local vault/data key;
+- recovery-envelope metadata/version and last successful verification state.
+
+The account-local data key remains the same logical key across replacement devices because it decrypts existing local vault files and encrypted local indexes. A restored historical Snap private key is separate from the new active Snap private key. The normal registration function must only ever register the active key.
+
+Migration rules:
+1. Read the legacy aliases without deleting or modifying them.
+2. Validate the legacy device ID, private-key length, and derived public key against the registered server row before migrating.
+3. Atomically write the new versioned active-key record and verify it can be read and derive the same public key.
+4. Only after verification mark the registry migrated; retain legacy aliases until a later release and explicit cleanup policy.
+5. If only one of the legacy device ID/private key exists, or any value is malformed/mismatched, stop and preserve all existing values. Never silently generate a replacement key over incomplete legacy material.
+6. For the data key, distinguish a genuinely new account with no encrypted local data from a missing key when encrypted records/files already exist. If ciphertext exists but the key is missing, fail closed and offer recovery; never create a new key and imply the old data is recoverable.
+7. During restore, write candidate key material to temporary versioned aliases, read it back, derive/compare public keys and authenticate a known encrypted vault item, then atomically switch a small active-version pointer. Keep the previous pointer/aliases until the new state is fully verified. On failure, roll back the pointer and leave source ciphertext untouched.
+8. Never log key bytes, recovery secrets, decrypted content, or raw challenge proofs. Clear temporary byte arrays best-effort after use; JavaScript zeroization is best-effort only and must not be described as guaranteed memory erasure.
+
+The current `createUserKey()` automatically creates a new data key when its SecureStore alias is empty. Before recovery ships, replace that behavior with an explicit first-install vs missing-key decision based on the presence of encrypted local records and vault files. This is a release-blocking correctness issue: a missing old key must not be mistaken for a fresh account.
+
+The current `createDeviceCryptoKey()` stores the device ID and private key in separate writes and correctly fails closed when only one exists. Preserve this behavior while making the writes versioned and recoverable; do not introduce a fallback that generates a second key after a partial write.
+
+## 3. Recommended recovery model
 
 Use a **separate, high-entropy, user-held recovery secret** to protect a recovery envelope. Do not derive it from the account password, email, phone number, or a partner's credentials.
 
@@ -37,7 +68,7 @@ Bind authenticated metadata (AAD) to the account UUID, envelope version, key IDs
 
 The recovery envelope is a small key backup, not a substitute for the encrypted data archive. The data itself must still be backed up as authenticated ciphertext.
 
-## 3. Replacement-device recovery sequence
+## 4. Replacement-device recovery sequence
 
 1. User signs into the same ONE-OS account on the replacement phone and completes email verification and Supabase AAL2.
 2. User explicitly chooses recovery and obtains the encrypted recovery envelope from an authorized Drive backup.
@@ -49,7 +80,7 @@ The recovery envelope is a small key backup, not a substitute for the encrypted 
 8. Verify the restored local vault and at least one historical Snap item before marking recovery complete. If verification fails, leave the original server-side encrypted copies untouched and provide a safe retry path.
 9. Any later re-wrapping of old file keys to the new active public key is a separately reviewed migration. Do not silently rotate keys during sign-in.
 
-## 4. Important security boundaries
+## 5. Important security boundaries
 
 - **MFA is not encryption recovery.** A backup TOTP factor only restores account access.
 - **Password reset is not encryption recovery.**
@@ -61,7 +92,7 @@ The recovery envelope is a small key backup, not a substitute for the encrypted 
 - Do not upload a key envelope before explicit user consent to recovery setup and Drive destinations.
 - Do not add a custom server boolean that claims recovery succeeded. The client must cryptographically authenticate the envelope; server authorization must separately enforce account ownership, AAL2, active space/device constraints, and rate limits.
 
-## 5. Server-side historical Snap authorization — selected design
+## 6. Server-side historical Snap authorization — selected design
 
 ### Do not weaken the Storage policy
 
@@ -106,7 +137,7 @@ This design deliberately does not restore historical access by editing `snap_del
 
 Multiple historical keys are represented by their existing device-key rows. Key rotation and re-wrapping old file keys remain a separate protocol and are not part of this recovery-download path.
 
-## 6. Test gate
+## 7. Test gate
 
 Before release, use a disposable Supabase project and two physical Android devices to test:
 - first-time key generation and recovery-envelope creation;
@@ -123,7 +154,7 @@ Before release, use a disposable Supabase project and two physical Android devic
 - recovery-secret rotation and old-envelope retirement;
 - recovery on a second replacement device and idempotent retry.
 
-## 7. Current decision and status
+## 8. Current decision and status
 
 **DESIGN RECOMMENDATION ONLY — NOT IMPLEMENTED OR VALIDATED.**
 
