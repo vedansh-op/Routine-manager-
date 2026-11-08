@@ -99,8 +99,16 @@ export async function getEncryptedItem(storageKey: string, userId: string): Prom
   const nonce = fromHex(parts[0]);
   if (nonce.length !== 24) throw new Error("Encrypted local data has an invalid nonce.");
   const key = await getUserKey(userId);
-  const plaintext = xchacha20poly1305(key, nonce).decrypt(fromHex(parts[1]));
-  return decodeUtf8(plaintext);
+  const ciphertext = fromHex(parts[1]);
+  let plaintext: Uint8Array | null = null;
+  try {
+    plaintext = xchacha20poly1305(key, nonce).decrypt(ciphertext);
+    return decodeUtf8(plaintext);
+  } finally {
+    nonce.fill(0);
+    ciphertext.fill(0);
+    plaintext?.fill(0);
+  }
 }
 
 export async function setEncryptedItem(storageKey: string, userId: string, value: string): Promise<void> {
@@ -108,8 +116,16 @@ export async function setEncryptedItem(storageKey: string, userId: string, value
   const next = previous.catch(() => undefined).then(async () => {
     const key = await getUserKey(userId);
     const nonce = getRandomBytes(24);
-    const ciphertext = xchacha20poly1305(key, nonce).encrypt(encodeUtf8(value));
-    await AsyncStorage.setItem(storageKey, ENCRYPTED_PREFIX + toHex(nonce) + ":" + toHex(ciphertext));
+    const plaintext = encodeUtf8(value);
+    let ciphertext: Uint8Array | null = null;
+    try {
+      ciphertext = xchacha20poly1305(key, nonce).encrypt(plaintext);
+      await AsyncStorage.setItem(storageKey, ENCRYPTED_PREFIX + toHex(nonce) + ":" + toHex(ciphertext));
+    } finally {
+      nonce.fill(0);
+      plaintext.fill(0);
+      ciphertext?.fill(0);
+    }
   });
   writeQueues.set(storageKey, next);
   try {
@@ -135,6 +151,11 @@ export async function decryptLocalBytes(userId: string, packed: Uint8Array): Pro
   if (packed.length < 40) throw new Error("The saved photo file is incomplete.");
   const nonce = packed.slice(0, 24);
   const ciphertext = packed.slice(24);
-  const key = await getUserKey(userId);
-  return xchacha20poly1305(key, nonce).decrypt(ciphertext);
+  try {
+    const key = await getUserKey(userId);
+    return xchacha20poly1305(key, nonce).decrypt(ciphertext);
+  } finally {
+    nonce.fill(0);
+    ciphertext.fill(0);
+  }
 }
