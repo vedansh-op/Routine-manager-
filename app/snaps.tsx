@@ -35,6 +35,22 @@ type PendingSnap = {
 const MAX_CIPHERTEXT_BYTES = 20 * 1024 * 1024;
 const MAX_PLAINTEXT_BYTES = MAX_CIPHERTEXT_BYTES - 16;
 
+/** Stop an in-flight Snap action if sign-out, account switching, or MFA downgrade occurs. */
+async function assertActiveSnapUser(expectedUserId: string): Promise<void> {
+  if (!supabase) throw new Error("Connect Supabase before sharing private photos.");
+  const { data: identity, error: identityError } = await supabase.auth.getUser();
+  if (identityError) throw identityError;
+  if (identity.user?.id !== expectedUserId) {
+    throw new Error("Your account changed. Reopen Private Memories before continuing.");
+  }
+  const { data: assurance, error: assuranceError } =
+    await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (assuranceError) throw assuranceError;
+  if (assurance.currentLevel !== "aal2") {
+    throw new Error("Complete multi-factor authentication before sharing private photos.");
+  }
+}
+
 function localDateKey(date: Date): string {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
 }
@@ -183,6 +199,7 @@ export default function SnapMemoriesScreen() {
     }
     setBusy(true);
     try {
+      await assertActiveSnapUser(user.id);
       let result: ImagePicker.ImagePickerResult;
       if (source === "camera") {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -194,6 +211,7 @@ export default function SnapMemoriesScreen() {
         result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.82, allowsEditing: false, exif: true });
       }
       if (result.canceled || !result.assets?.[0]) return;
+      await assertActiveSnapUser(user.id);
       const asset = result.assets[0];
       const bytes = await new File(asset.uri).bytes();
       if (bytes.length < 1 || bytes.length > MAX_PLAINTEXT_BYTES) {
@@ -204,6 +222,7 @@ export default function SnapMemoriesScreen() {
       const capturedAt = captureTimestamp(asset.exif?.DateTimeOriginal);
 
       const envelope = encryptSnap(bytes, partnerPublicKeyHex);
+      await assertActiveSnapUser(user.id);
       const { data, error } = await supabase.rpc("create_snap_delivery", {
         p_space_id: spaceId,
         p_recipient_id: partnerId,
@@ -221,6 +240,7 @@ export default function SnapMemoriesScreen() {
       const created = Array.isArray(data) ? data[0] : data;
       if (!created?.delivery_id || !created?.object_path) throw new Error("The server did not create the encrypted delivery.");
 
+      await assertActiveSnapUser(user.id);
       const { error: uploadError } = await supabase.storage
         .from("oneos-private-snaps")
         .upload(created.object_path, envelope.ciphertext.buffer as ArrayBuffer, {
@@ -233,6 +253,7 @@ export default function SnapMemoriesScreen() {
       const senderCopy = await saveLocalSnap(user.id, created.delivery_id, mimeType, capturedAt, "sent", bytes, created.delivery_id);
       setLocalSnaps(old => [senderCopy, ...old.filter(snap => snap.id !== senderCopy.id)]);
 
+      await assertActiveSnapUser(user.id);
       const { error: finalizeError } = await supabase.rpc("finalize_snap_upload", {
         p_delivery_id: created.delivery_id,
       });
@@ -249,6 +270,7 @@ export default function SnapMemoriesScreen() {
     if (!user || !supabase || !deviceKey) return;
     setReceivingId(item.id);
     try {
+      await assertActiveSnapUser(user.id);
       // Re-read the durable vault on every attempt. React state may be stale after an
       // earlier download succeeded but the cloud acknowledgement failed.
       const savedSnaps = await getLocalSnaps(user.id);
@@ -260,6 +282,7 @@ export default function SnapMemoriesScreen() {
         if (!item.object_path || !item.ephemeral_public_key || !item.wrap_salt || !item.wrap_nonce || !item.wrapped_file_key || !item.content_nonce) {
           throw new Error("This delivery is missing its encryption envelope.");
         }
+        await assertActiveSnapUser(user.id);
         const { data: blob, error: downloadError } = await supabase.storage
           .from("oneos-private-snaps")
           .download(item.object_path);
@@ -282,6 +305,7 @@ export default function SnapMemoriesScreen() {
         setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
       }
 
+      await assertActiveSnapUser(user.id);
       const { error: ackError } = await supabase.functions.invoke("ack-snap", {
         body: { deliveryId: item.id },
       });
