@@ -41,6 +41,16 @@ export type QuietHours = {
   endMinute: number;
 };
 
+export type NotificationHistoryEntry = {
+  id: string;
+  reminderId: string;
+  category: NotificationCategory;
+  title: string;
+  body: string;
+  event: "received" | "opened" | "snoozed" | "completed";
+  occurredAt: string;
+};
+
 export type NotificationSettings = {
   enabled: boolean;
   sound: boolean;
@@ -51,6 +61,7 @@ export type NotificationSettings = {
 
 type NotificationState = {
   reminders: Reminder[];
+  history: NotificationHistoryEntry[];
   settings: NotificationSettings;
 };
 
@@ -135,7 +146,7 @@ function moveAfterQuietHours(date: Date, quiet: QuietHours) {
 }
 
 function defaultState(): NotificationState {
-  return { reminders: [], settings: DEFAULT_SETTINGS };
+  return { reminders: [], history: [], settings: DEFAULT_SETTINGS };
 }
 
 function normalizeState(value: unknown): NotificationState {
@@ -144,6 +155,17 @@ function normalizeState(value: unknown): NotificationState {
   const rawSettings = source.settings as Partial<NotificationSettings> | undefined;
   const rawCategories = rawSettings?.categoryEnabled as Partial<Record<NotificationCategory, boolean>> | undefined;
   const rawQuiet = rawSettings?.quietHours as Partial<QuietHours> | undefined;
+  const history = Array.isArray(source.history)
+    ? source.history.filter((item): item is NotificationHistoryEntry => {
+        if (!item || typeof item !== "object") return false;
+        const row = item as Partial<NotificationHistoryEntry>;
+        return typeof row.id === "string" && typeof row.reminderId === "string" &&
+          isCategory(row.category) && typeof row.title === "string" &&
+          typeof row.body === "string" &&
+          (row.event === "received" || row.event === "opened" || row.event === "snoozed" || row.event === "completed") &&
+          typeof row.occurredAt === "string" && Number.isFinite(Date.parse(row.occurredAt));
+      }).slice(0, 100)
+    : [];
   const reminders = Array.isArray(source.reminders)
     ? source.reminders.filter((item): item is Reminder => {
         if (!item || typeof item !== "object") return false;
@@ -157,6 +179,7 @@ function normalizeState(value: unknown): NotificationState {
     : [];
   return {
     reminders,
+    history,
     settings: {
       enabled: rawSettings?.enabled !== false,
       sound: rawSettings?.sound !== false,
@@ -417,6 +440,20 @@ export async function updateNotificationSettings(
   }
   await saveState(userId, state);
   return state;
+}
+
+export async function recordNotificationHistory(
+  userId: string,
+  entry: Omit<NotificationHistoryEntry, "id" | "occurredAt"> & { occurredAt?: string },
+) {
+  const state = await loadState(userId);
+  const id = makeId();
+  state.history = [{
+    ...entry,
+    id,
+    occurredAt: entry.occurredAt ?? new Date().toISOString(),
+  }, ...state.history].slice(0, 100);
+  await saveState(userId, state);
 }
 
 export async function listEnabledReminderCategories(userId: string) {
