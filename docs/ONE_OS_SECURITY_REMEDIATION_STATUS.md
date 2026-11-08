@@ -83,7 +83,7 @@ These are source changes, not verified deployed fixes. The migrations have not y
 14. Attempt to change `shared_activities.id`, `space_id`, and `created_by` as the creator; all three must be rejected, while ordinary title/note/time edits continue to work.
 15. Verify partner public keys are hidden for personal spaces, ended shared spaces, and spaces with other than exactly two members, but visible to the two active shared participants.
 16. Attempt Snap inserts through the RPC and a controlled elevated test path for personal, ended, one-member, three-member, wrong-sender, and wrong-recipient cases; only the valid active two-person shared-space case should succeed.
-17. Run two concurrent invite acceptances for one remaining slot; exactly one may join. Also attempt concurrent joins into different shared spaces for the same account; only one may succeed.
+17. Run two concurrent invite acceptances for one remaining slot; exactly one may join. Also attempt concurrent joins into different shared spaces for the same account; only one may succeed. Race a membership insert against the MFA-confirmed End Connection RPC; the archive-row lock must serialize them so no member can join after termination commits.
 18. Verify a member cannot read `shared_activities` rows attached to a personal space, while both participants can still read retained calendar history after End Connection.
 19. Run `supabase/tests/one_os_storage_policy_audit.sql`; inspect every `storage.objects` policy for broad or overlapping permissive rules, confirm the Snap bucket is private, and review effective grants before accepting the Storage boundary.
 
