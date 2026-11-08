@@ -498,6 +498,37 @@ export async function scheduleReminder(userId: string, draft: ReminderDraft) {
   });
 }
 
+export async function rescheduleReminder(userId: string, reminderId: string, date: Date) {
+  return withNotificationQueue(async () => {
+    if (!(date instanceof Date) || !Number.isFinite(date.getTime()) || date.getTime() <= Date.now()) {
+      throw new Error("Choose a future reminder time.");
+    }
+    const state = await loadState(userId);
+    const reminder = state.reminders.find(item => item.id === reminderId);
+    if (!reminder || reminder.completed) throw new Error("This reminder is no longer active.");
+    if (reminder.repeat.kind !== "once") throw new Error("Only one-time reminders can be moved from this screen.");
+    if (!state.settings.enabled || !state.settings.categoryEnabled[reminder.category]) {
+      throw new Error("This notification category is switched off in settings.");
+    }
+    const oldId = reminder.notificationId;
+    const updated = { ...reminder, repeat: { kind: "once" as const, date: date.toISOString() }, notificationId: null };
+    const nextId = await scheduleNative(userId, updated, state.settings);
+    if (!nextId) throw new Error("This reminder could not be scheduled.");
+    updated.notificationId = nextId;
+    state.reminders = state.reminders.map(item => item.id === reminderId ? updated : item);
+    try {
+      await saveState(userId, state);
+    } catch (error) {
+      await Notifications.cancelScheduledNotificationAsync(nextId).catch(() => undefined);
+      throw error;
+    }
+    if (oldId && oldId !== nextId) {
+      await Notifications.cancelScheduledNotificationAsync(oldId).catch(() => undefined);
+    }
+    return updated;
+  });
+}
+
 export async function cancelReminder(userId: string, reminderId: string) {
   return withNotificationQueue(async () => {
     const state = await loadState(userId);
