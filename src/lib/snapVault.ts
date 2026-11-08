@@ -56,17 +56,21 @@ export async function saveLocalSnap(
     // Finish encryption before opening the target file, so key failures
     // cannot truncate an existing memory.
     const encryptedAtRest = await encryptLocalBytes(userId, plaintext);
-    const directory = vaultDirectory(userId);
-    directory.create({ idempotent: true, intermediates: true });
-    const file = new File(directory, safeId + ".enc");
-    file.create({ intermediates: true, overwrite: true });
-    await file.write(encryptedAtRest);
+    try {
+      const directory = vaultDirectory(userId);
+      directory.create({ idempotent: true, intermediates: true });
+      const file = new File(directory, safeId + ".enc");
+      file.create({ intermediates: true, overwrite: true });
+      await file.write(encryptedAtRest);
 
-    const record: LocalSnap = { id, deliveryId, fileUri: file.uri, mimeType, capturedAt, direction };
-    const existing = await readIndex(userId);
-    const next = [record, ...existing.filter(item => item.id !== id)];
-    await setEncryptedItem(indexKey(userId), userId, JSON.stringify(next));
-    return record;
+      const record: LocalSnap = { id, deliveryId, fileUri: file.uri, mimeType, capturedAt, direction };
+      const existing = await readIndex(userId);
+      const next = [record, ...existing.filter(item => item.id !== id)];
+      await setEncryptedItem(indexKey(userId), userId, JSON.stringify(next));
+      return record;
+    } finally {
+      encryptedAtRest.fill(0);
+    }
   });
 }
 
@@ -83,7 +87,12 @@ export async function readLocalSnap(userId: string, record: LocalSnap): Promise<
   return withVaultLock(userId, async () => {
     const file = new File(record.fileUri);
     if (!file.exists) throw new Error("This photo is no longer present on this device.");
-    return decryptLocalBytes(userId, await file.bytes());
+    const encryptedAtRest = await file.bytes();
+    try {
+      return await decryptLocalBytes(userId, encryptedAtRest);
+    } finally {
+      encryptedAtRest.fill(0);
+    }
   });
 }
 
