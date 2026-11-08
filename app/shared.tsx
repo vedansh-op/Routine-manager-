@@ -143,7 +143,7 @@ export default function SharedSpaceScreen() {
     </View> : <>
       <View style={s.card}>
         <Text style={s.cardTitle}>Create a shared space</Text>
-        <Text style={s.copy}>Generate an 24-character code and send it privately to the person you want to connect with.</Text>
+        <Text style={s.copy}>Generate a 24-character code and send it privately to the person you want to connect with.</Text>
         <Pressable disabled={busy} onPress={createSpace} style={[s.primary, busy && s.disabled]}>
           {busy ? <ActivityIndicator color="#101216" /> : <Text style={s.primaryText}>Create space & generate code</Text>}
         </Pressable>
@@ -156,7 +156,7 @@ export default function SharedSpaceScreen() {
       <View style={s.card}>
         <Text style={s.cardTitle}>Join with a code</Text>
         <Text style={s.copy}>Already received an invitation? Enter the code below using your own ONE-OS account.</Text>
-        <TextInput value={inviteCode} onChangeText={setInviteCode} placeholder="12-character code" placeholderTextColor="#777d8c" autoCapitalize="characters" autoCorrect={false} maxLength={24} style={s.input} />
+        <TextInput value={inviteCode} onChangeText={setInviteCode} placeholder="24-character code" placeholderTextColor="#777d8c" autoCapitalize="characters" autoCorrect={false} maxLength={24} style={s.input} />
         <Pressable disabled={busy} onPress={joinSpace} style={[s.secondary, busy && s.disabled]}>
           <Text style={s.secondaryText}>Join shared space</Text>
         </Pressable>
