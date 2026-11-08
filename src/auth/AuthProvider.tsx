@@ -48,13 +48,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     let alive = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (alive) setSession(data.session);
+    let receivedAuthEvent = false;
+    // Subscribe before reading the persisted session. If sign-in/sign-out fires
+    // while getSession is pending, its newer event must win over the snapshot.
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      receivedAuthEvent = true;
+      if (alive) {
+        setSession(nextSession);
+        setLoading(false);
+      }
+    });
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) throw error;
+      if (alive && !receivedAuthEvent) setSession(data.session);
+    }).catch(() => {
+      // Keep the current auth-event session (or signed-out state) on read failure.
     }).finally(() => {
       if (alive) setLoading(false);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
     });
     Linking.getInitialURL().then(url => {
       if (url) void acceptAuthUrl(url, setRecovery);
