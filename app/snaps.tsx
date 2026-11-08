@@ -21,7 +21,7 @@ type PendingSnap = {
   recipient_id: string;
   recipient_device_id: string;
   object_path: string;
-  status: "uploading" | "pending" | "received";
+  status: "uploading" | "pending" | "downloaded" | "permanent_copy_verified" | "received" | "expiring";
   ephemeral_public_key: string;
   wrap_salt: string;
   wrap_nonce: string;
@@ -292,7 +292,7 @@ export default function SnapMemoriesScreen() {
       }
       setPending(old => old.filter(snap => snap.id !== item.id));
       setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
-      Alert.alert("Memory received", "The photo is now saved encrypted on this phone. The temporary cloud copy and delivery key have been removed.");
+      Alert.alert("Memory received", "The photo is saved encrypted on this phone. The temporary encrypted server copy is being retained until ONE-OS can verify a separate permanent copy.");
     } catch (error) {
       Alert.alert("Couldn't receive this snap", error instanceof Error ? error.message : "Please retry when connected.");
     } finally { setReceivingId(null); }
@@ -402,7 +402,7 @@ export default function SnapMemoriesScreen() {
 
     <View style={s.noteCard}>
       <Text style={s.noteTitle}>A small privacy promise</Text>
-      <Text style={s.muted}>The temporary server copy is deleted after your partner receives and locally saves the photo. If their device has no successful ONE-OS server heartbeat for 72 hours, pending cloud photos and their delivery keys expire. Already received photos stay on each device. If they open the app offline, that cannot reset the server timer until they reconnect.</Text>
+      <Text style={s.muted}>Pending encrypted cloud photos expire after 72 hours without a server heartbeat. Once a recipient downloads a photo, ONE-OS keeps the temporary encrypted server copy until a separate permanent copy can be verified. Local encrypted copies remain on each device independently. Opening the app offline does not reset the server timer.</Text>
     </View>
     <Text style={s.footer}>ONE-OS · private moments, kept close</Text>
 
