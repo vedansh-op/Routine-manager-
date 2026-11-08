@@ -45,6 +45,9 @@ jobs:
       - name: Run notification-state tests
         run: npm run test:notifications
 
+      - name: Run Snap crypto tests
+        run: npm run test:crypto
+
       - name: Generate native Android project
         run: npx expo prebuild --platform android --non-interactive
 
