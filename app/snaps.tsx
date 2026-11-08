@@ -347,10 +347,6 @@ export default function SnapMemoriesScreen() {
     if (!user) return;
     try {
       const bytes = await readLocalSnap(user.id, record);
-      if ((await supabase?.auth.getUser())?.data.user?.id !== user.id) {
-        bytes.fill(0);
-        throw new Error("Your account changed. Reopen Private Memories before viewing this photo.");
-      }
       setPreviewUri("data:" + record.mimeType + ";base64," + bytesToBase64(bytes));
       bytes.fill(0);
     } catch (error) {
