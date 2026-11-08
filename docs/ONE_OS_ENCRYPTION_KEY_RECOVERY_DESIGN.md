@@ -231,8 +231,37 @@ The next implementation step is to add tests and a reviewed bootstrap decision. 
 - Whether the scoped AppStore record exists and appears encrypted (`enc1:`) or legacy plaintext.
 - Whether the older unscoped AppStore key exists (it is reported separately because its ownership is not established by the key name).
 - Whether the Snap index exists and appears encrypted or legacy plaintext.
-- Whether the account's Snap vault directory is visible and, if visible, whether the directory contains any entries (and the count of direct files). Unexpected subdirectories are treated as non-empty rather than being mistaken for an empty vault.
+- Whether the account's Snap vault directory is visible and, if visible, whether the account-specific vault directory contains entries (and the count of direct files). It first lists the document root, then the vault root, then the account directory. A missing account directory is treated as empty only after its parent has been successfully listed; an inaccessible parent remains unknown. Unexpected subdirectories are treated as non-empty rather than being mistaken for an empty vault.
 
-It never reads file contents, decrypts data, or mutates storage. An inaccessible/missing vault directory is reported as `not-visible`, not as empty. Both inspectors validate the account ID as a UUID before using it in SecureStore, AsyncStorage, or filesystem paths. Any inspection exception leaves the overall result `unknown`; callers must not use unknown or not-visible to authorize new key creation. The entry/file count is only a presence signal, not proof that files are valid ciphertext or belong to this user.
+It never reads file contents, decrypts data, or mutates storage. An inaccessible document root or failed directory listing is reported as `unknown`, not as empty. A missing vault root/account directory is reported as empty only after its parent listing succeeds. Both inspectors validate the account ID as a UUID before using it in SecureStore, AsyncStorage, or filesystem paths. Any inspection exception leaves the overall result `unknown`; callers must not use unknown or not-visible to authorize new key creation. The entry/file count is only a presence signal, not proof that files are valid ciphertext or belong to this user.
 
 The function is not yet called by app startup, and `createUserKey()` remains unchanged. This is intentional until automated tests can exercise the dangerous states without touching real user data.
+
+
+## 12. Recovery bootstrap decision table (must remain fail-closed)
+
+| Device key inspection | Data key | Local encrypted/legacy data | Vault inventory | Decision |
+|---|---|---|---|---|
+| valid | present-valid | any | any known state | Existing local key state; do not bootstrap a new key |
+| valid | missing or malformed | any | any | Stop; data-key recovery required |
+| partial or malformed | any | any | any | Stop; preserve all aliases and ciphertext |
+| server-unavailable or server-error | any | any | any | Defer server-dependent validation; do not migrate/register |
+| server-mismatch | any | any | any | Stop; possible identity mismatch or tampering |
+| absent | missing | any encrypted record, legacy record, or vault entries | any | Stop; recovery required; never generate a replacement data key |
+| absent | present-valid | any | any | Stop for explicit review; do not assume the device identity can be recreated |
+| absent | missing | no task/index/legacy records | empty-visible | Candidate fresh local state only; still require explicit first-install bootstrap policy |
+| any | any | any | unknown/not-visible | Stop; inventory is incomplete |
+
+This table is a safety classifier, not an implemented startup decision. The current application still uses the legacy bootstrap paths. No user data is changed by the inspectors.
+
+### Test matrix to automate before wiring the classifier
+
+- Both key aliases absent; both present; each one-sided partial case.
+- Invalid device ID, invalid hex, wrong secret length, wrong account UUID.
+- Matching active server row, matching revoked row, missing row, mismatched public key, RLS/network failure.
+- Missing/malformed/present data-key alias.
+- AppStore record absent, valid `enc1:` shape, plaintext legacy value, malformed encrypted value.
+- Legacy unscoped AppStore record present and absent.
+- Snap index absent, encrypted, legacy plaintext.
+- Document root missing/inaccessible, vault root absent, account directory absent, empty account directory, files present, unexpected subdirectory, list failure.
+- Concurrent inspection and account switching; ensure no key material is emitted or modified.
