@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test:recovery": "node --test scripts/key-recovery-state.test.cjs scripts/key-recovery-registry.test.cjs scripts/secure-local-store.test.cjs scripts/snap-vault.test.cjs scripts/legacy-migration.test.cjs",
     "test:notifications": "node --test scripts/notification-state.test.cjs",
-    "test:crypto": "node --test scripts/snap-crypto.test.mjs"
+    "test:crypto": "node --test scripts/snap-crypto.test.mjs",
+    "test:session": "node --test scripts/secure-session-storage.test.cjs"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
