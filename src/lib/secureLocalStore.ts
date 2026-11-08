@@ -41,23 +41,36 @@ async function readUserKey(userId: string): Promise<Uint8Array> {
 /**
  * Creates a data key only when an explicit, read-only recovery bootstrap has
  * established that no existing encrypted local data depends on a missing key.
+ * Concurrent startup effects share one initialization attempt.
  */
-export async function initializeUserKeyForFreshInstall(userId: string): Promise<void> {
-  const alias = KEY_PREFIX + userId;
-  const existing = await SecureStore.getItemAsync(alias);
-  if (existing !== null) {
-    const key = fromHex(existing);
-    if (key.length !== 32) throw new Error("The local encryption key is invalid.");
-    return;
-  }
-  const generated = toHex(getRandomBytes(32));
-  await SecureStore.setItemAsync(alias, generated, {
-    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+const keyInitializations = new Map<string, Promise<void>>();
+
+export function initializeUserKeyForFreshInstall(userId: string): Promise<void> {
+  const active = keyInitializations.get(userId);
+  if (active) return active;
+
+  const pending = (async () => {
+    const alias = KEY_PREFIX + userId;
+    const existing = await SecureStore.getItemAsync(alias);
+    if (existing !== null) {
+      const key = fromHex(existing);
+      if (key.length !== 32) throw new Error("The local encryption key is invalid.");
+      return;
+    }
+    const generated = toHex(getRandomBytes(32));
+    await SecureStore.setItemAsync(alias, generated, {
+      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    });
+    const confirmed = await SecureStore.getItemAsync(alias);
+    if (confirmed !== generated) {
+      throw new Error("The new local encryption key could not be verified.");
+    }
+  })().finally(() => {
+    if (keyInitializations.get(userId) === pending) keyInitializations.delete(userId);
   });
-  const confirmed = await SecureStore.getItemAsync(alias);
-  if (confirmed !== generated) {
-    throw new Error("The new local encryption key could not be verified.");
-  }
+
+  keyInitializations.set(userId, pending);
+  return pending;
 }
 
 const userKeyLoads = new Map<string, Promise<Uint8Array>>();
