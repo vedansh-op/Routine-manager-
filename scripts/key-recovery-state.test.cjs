@@ -14,13 +14,6 @@ const moduleObject = { exports: {} };
 vm.runInNewContext(compiled.outputText, { module: moduleObject, exports: moduleObject.exports });
 const { classifyRecoveryBootstrapState } = moduleObject.exports;
 
-const device = (status = "absent", revoked = false) =>
-  status === "valid"
-    ? { status, deviceIdPresent: true, secretPresent: true, revoked }
-    : status === "absent"
-      ? { status, deviceIdPresent: false, secretPresent: false }
-      : { status, deviceIdPresent: true, secretPresent: false };
-
 const inventory = (overrides = {}) => ({
   status: "complete",
   dataKey: "missing",
@@ -33,89 +26,62 @@ const inventory = (overrides = {}) => ({
 });
 
 test("fresh candidate requires a positively visible empty vault and allows plaintext migration", () => {
-  assert.equal(classifyRecoveryBootstrapState(device(), inventory()), "fresh-candidate");
+  assert.equal(classifyRecoveryBootstrapState(inventory()), "fresh-candidate");
   assert.equal(
-    classifyRecoveryBootstrapState(
-      device(),
-      inventory({ legacyUnscopedAppStoreRecord: "present" }),
-    ),
+    classifyRecoveryBootstrapState(inventory({ legacyUnscopedAppStoreRecord: "present" })),
     "fresh-candidate",
   );
   assert.equal(
     classifyRecoveryBootstrapState(
-      device(),
       inventory({ appStoreRecord: "legacy-plaintext", snapIndex: "legacy-plaintext" }),
     ),
     "fresh-candidate",
   );
   assert.equal(
-    classifyRecoveryBootstrapState(device(), inventory({ snapVault: "not-visible" })),
+    classifyRecoveryBootstrapState(inventory({ snapVault: "not-visible" })),
     "needs-review",
   );
   assert.equal(
-    classifyRecoveryBootstrapState(device(), inventory({ status: "unknown" })),
+    classifyRecoveryBootstrapState(inventory({ status: "unknown" })),
     "needs-review",
   );
 });
 
 test("existing encrypted data with a missing key requires recovery", () => {
   assert.equal(
-    classifyRecoveryBootstrapState(
-      device(),
-      inventory({ appStoreRecord: "encrypted" }),
-    ),
+    classifyRecoveryBootstrapState(inventory({ appStoreRecord: "encrypted" })),
     "recover-existing",
   );
   assert.equal(
     classifyRecoveryBootstrapState(
-      device(),
       inventory({ snapIndex: "encrypted", snapVault: "contains-entries" }),
     ),
     "recover-existing",
   );
 });
 
-test("a valid data key is usable even when the separate Snap device key is absent", () => {
+test("a valid data key permits local data access without a Snap device registry lookup", () => {
   assert.equal(
-    classifyRecoveryBootstrapState(device(), inventory({ dataKey: "present-valid" })),
-    "ready",
-  );
-  assert.equal(
-    classifyRecoveryBootstrapState(
-      device("valid"),
-      inventory({ dataKey: "present-valid" }),
-    ),
+    classifyRecoveryBootstrapState(inventory({ dataKey: "present-valid" })),
     "ready",
   );
 });
 
-test("revoked, malformed, and inconsistent key states fail closed", () => {
+test("malformed keys and inconsistent local inventories fail closed", () => {
   assert.equal(
-    classifyRecoveryBootstrapState(
-      device("valid", true),
-      inventory({ dataKey: "present-valid" }),
-    ),
+    classifyRecoveryBootstrapState(inventory({ dataKey: "present-malformed" })),
     "needs-review",
   );
   assert.equal(
     classifyRecoveryBootstrapState(
-      device(),
-      inventory({ dataKey: "present-malformed" }),
+      inventory({ appStoreRecord: "encrypted", dataKey: "present-malformed" }),
     ),
     "recover-existing",
   );
   assert.equal(
     classifyRecoveryBootstrapState(
-      device("partial"),
-      inventory({ dataKey: "present-valid" }),
+      inventory({ appStoreRecord: "legacy-plaintext", snapVault: "contains-entries" }),
     ),
     "needs-review",
-  );
-  assert.equal(
-    classifyRecoveryBootstrapState(
-      device(),
-      inventory({ appStoreRecord: "encrypted" }),
-    ),
-    "recover-existing",
   );
 });
