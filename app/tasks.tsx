@@ -12,6 +12,7 @@ const leadOptions = [
   { minutes: 15, label: "15m before" },
   { minutes: 5, label: "5m before" },
   { minutes: 0, label: "At due time" },
+  { minutes: -60, label: "1h after due" },
 ];
 
 export default function Tasks() {
@@ -53,7 +54,9 @@ export default function Tasks() {
           title: task.title,
           body: minutes === 0
             ? "This task is due now."
-            : "This task is due in " + (minutes >= 60 ? minutes / 60 + " hour" + (minutes === 60 ? "" : "s") : minutes + " minutes") + ".",
+            : minutes < 0
+              ? "This task is overdue by " + (Math.abs(minutes) >= 60 ? Math.abs(minutes) / 60 + " hour" : Math.abs(minutes) + " minutes") + "."
+              : "This task is due in " + (minutes >= 60 ? minutes / 60 + " hour" + (minutes === 60 ? "" : "s") : minutes + " minutes") + ".",
           route: "/tasks",
           sourceKey,
           repeat: { kind: "once", date: alertAt.toISOString() },
