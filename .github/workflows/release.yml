@@ -42,10 +42,11 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Validate TypeScript and recovery tests
+      - name: Validate TypeScript and local regression tests
         run: |
           npx tsc --noEmit
           npm run test:recovery
+          npm run test:notifications
 
       - name: Set app version from release tag
         env:
