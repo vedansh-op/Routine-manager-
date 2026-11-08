@@ -1,3 +1,8 @@
+-- Device revocation metadata must exist before this migration updates
+-- Storage authorization to exclude revoked recipient devices.
+alter table public.device_crypto_keys
+  add column if not exists revoked_at timestamptz;
+
 -- ONE-OS Snap recovery: allow the intended recipient device to re-download
 -- retained ciphertext after a previous download acknowledgement.
 -- The downloaded state is deliberately retained until permanent-copy proof exists.
