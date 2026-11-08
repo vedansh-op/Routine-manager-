@@ -118,13 +118,13 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     if (!storageUnlocked || !ready || activeUserId !== userId) return;
     const value = title.trim();
     if (value) setTasks(old => [{ id: uid(), title: value, completed: false, createdAt: new Date().toISOString() }, ...old]);
-  }, []);
+  }, [storageUnlocked, ready, activeUserId, userId]);
   const toggleTask = useCallback((id: string) => { if (!storageUnlocked || !ready || activeUserId !== userId) return; setTasks(old => old.map(t => t.id === id ? { ...t, completed: !t.completed } : t)); }, [storageUnlocked, ready, activeUserId, userId]);
   const addHabit = useCallback((title: string) => {
     if (!storageUnlocked || !ready || activeUserId !== userId) return;
     const value = title.trim();
     if (value) setHabits(old => [{ id: uid(), title: value, createdAt: new Date().toISOString(), archived: false }, ...old]);
-  }, []);
+  }, [storageUnlocked, ready, activeUserId, userId]);
   const toggleHabitToday = useCallback((id: string) => {
     if (!storageUnlocked || !ready || activeUserId !== userId) return;
     const key = id + ":" + today();
