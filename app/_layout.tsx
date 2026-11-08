@@ -14,6 +14,8 @@ function SessionGate() {
   const route = segments[0];
   const inAuth = route === "auth";
   const inMfa = route === "mfa";
+  const inVerifyEmail = route === "verify-email";
+  const emailVerified = Boolean(session?.user.email_confirmed_at);
   const [assuranceReady, setAssuranceReady] = useState(false);
   const [aal2, setAal2] = useState(false);
 
@@ -21,7 +23,7 @@ function SessionGate() {
     let alive = true;
     setAssuranceReady(false);
     setAal2(false);
-    if (!session || !supabase || recovery) {
+    if (!session || !supabase || recovery || !emailVerified) {
       setAssuranceReady(true);
       return () => { alive = false; };
     }
@@ -31,14 +33,15 @@ function SessionGate() {
       setAssuranceReady(true);
     }).catch(() => { if (alive) setAssuranceReady(true); });
     return () => { alive = false; };
-  }, [session?.access_token, recovery]);
+  }, [session?.access_token, recovery, emailVerified]);
 
   useEffect(() => {
-    if (loading || !assuranceReady) return;
+    if (loading || (!assuranceReady && session && emailVerified && !recovery)) return;
     if ((!configured || !session) && !inAuth) router.replace("/auth");
-    else if (session && configured && !recovery && !aal2 && !inMfa) router.replace("/mfa");
-    else if (session && configured && !recovery && aal2 && (inAuth || inMfa)) router.replace("/");
-  }, [configured, loading, session, recovery, assuranceReady, aal2, inAuth, inMfa, router]);
+    else if (session && configured && !emailVerified && !inVerifyEmail) router.replace("/verify-email");
+    else if (session && configured && emailVerified && !recovery && !aal2 && !inMfa) router.replace("/mfa");
+    else if (session && configured && emailVerified && !recovery && aal2 && (inAuth || inMfa || inVerifyEmail)) router.replace("/");
+  }, [configured, loading, session, emailVerified, recovery, assuranceReady, aal2, inAuth, inMfa, inVerifyEmail, router]);
 
   // Heartbeat and device-key registration run only after the session reaches AAL2.
   useEffect(() => {
@@ -62,7 +65,7 @@ function SessionGate() {
     return () => { cancelled = true; subscription.remove(); };
   }, [configured, session?.user.id, aal2]);
 
-  if (session && !recovery && !inMfa && (!assuranceReady || !aal2)) {
+  if (session && !recovery && !inVerifyEmail && (!emailVerified || (!inMfa && (!assuranceReady || !aal2)))) {
     return <View style={{ flex: 1, backgroundColor: "#101216", alignItems: "center", justifyContent: "center" }}><ActivityIndicator color="#b7adff" /></View>;
   }
   return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#101216" } }} />;
