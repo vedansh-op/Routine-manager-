@@ -29,12 +29,19 @@ function SessionGate() {
   const inVerifyEmail = route === "verify-email";
   const emailVerified = Boolean(session?.user.email_confirmed_at);
   useEffect(() => {
-    if (!user?.id) {
-      void reconcileScheduledNotifications(null).catch(() => undefined);
-      return;
-    }
-    if (!canEdit) return;
-    void reconcileScheduledNotifications(user.id).catch(() => undefined);
+    const reconcile = () => {
+      if (!user?.id) {
+        void reconcileScheduledNotifications(null).catch(() => undefined);
+        return;
+      }
+      if (!canEdit) return;
+      void reconcileScheduledNotifications(user.id).catch(() => undefined);
+    };
+    reconcile();
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") reconcile();
+    });
+    return () => subscription.remove();
   }, [user?.id, canEdit]);
 
   const handledResponses = useRef(new Set<string>());
