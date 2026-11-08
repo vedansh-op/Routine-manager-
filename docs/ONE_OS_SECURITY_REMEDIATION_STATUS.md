@@ -115,3 +115,19 @@ ONE-OS remains **not ready for production release**. The strict security audit g
 22. Request account deletion; verify MFA is required, deletion is delayed for exactly 7 days, only the owner can cancel during the grace period, and final deletion does not erase the other participant's detached shared calendar archive.
 23. Confirm no client-side code can directly delete Auth users or bypass the server-enforced deletion schedule.
 
+
+
+## Authentication hardening added on 8 November 2026
+
+| Finding | Source change | Status |
+|---|---|---|
+| AUTH-01 — client-only MFA gate | Added `supabase/migrations/202611080012_require_aal2_for_sensitive_writes.sql` with a database trigger guard requiring an AAL2 JWT for authenticated writes to shared-space lifecycle, membership, invitations, device keys, Snap deliveries, shared calendar activities, and weekly reports. The existing `end_shared_connection` RPC already requires AAL2. | **Source guard added.** It has not been executed by PostgreSQL. Validate AAL1 rejection, AAL2 success, personal-space behavior, and service-role maintenance in non-production. Inventory all remaining SECURITY DEFINER functions and Edge Functions; this is not yet proof of complete coverage. |
+| AUTH-02 — unverified email sessions | Added `app/verify-email.tsx` with resend and refresh/recheck actions. `app/_layout.tsx` routes sessions without `email_confirmed_at` to verification before MFA or protected screens. | **Client guard added.** Supabase Confirm Email settings, templates, redirect allow-list and server-side behavior remain unverified. |
+
+New/updated authentication files:
+- `supabase/migrations/202611080012_require_aal2_for_sensitive_writes.sql`
+- `app/verify-email.tsx`
+- `app/_layout.tsx`
+- `docs/ONE_OS_AUTH_SESSION_AUDIT.md`
+
+These changes remain source-only. No Supabase migration has been executed, no project Auth setting has been changed, and no production deployment has occurred.
