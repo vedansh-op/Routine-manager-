@@ -132,3 +132,10 @@ New/updated authentication files:
 - `supabase/functions/ack-snap/index.ts`
 
 These changes remain source-only. No Supabase migration has been executed, no project Auth setting has been changed, and no production deployment has occurred.
+
+
+## AUTH-06 follow-up audit coverage
+
+- Extended `supabase/tests/one_os_database_policy_audit.sql` with a read-only inventory of all `require_aal2_%` triggers, enabled/disabled state, trigger definitions, and all non-internal triggers on public application tables.
+- This is a review aid, not an automatic proof of safe coverage. In non-production, compare the expected guarded tables with the live results and inspect every user-writable table and SECURITY DEFINER routine.
+- The MFA migration remains unexecuted. Do not mark server-side MFA complete until PostgreSQL applies it cleanly and tests show AAL1 rejection, AAL2 success, personal-space behavior, and service-role job compatibility.
