@@ -34,12 +34,36 @@ function withVaultLock<T>(userId: string, operation: () => Promise<T>): Promise<
   return current;
 }
 
+function isLocalSnapRecord(value: unknown): value is LocalSnap {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  if (typeof item.id !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(item.id)) return false;
+  if (item.deliveryId !== undefined &&
+      (typeof item.deliveryId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(item.deliveryId))) return false;
+  if (typeof item.fileUri !== "string" || item.fileUri.length === 0) return false;
+  if (typeof item.mimeType !== "string" ||
+      !["image/jpeg", "image/png", "image/webp", "image/heic"].includes(item.mimeType)) return false;
+  if (typeof item.capturedAt !== "string" || !Number.isFinite(Date.parse(item.capturedAt))) return false;
+  return item.direction === "sent" || item.direction === "received";
+}
+
 async function readIndex(userId: string): Promise<LocalSnap[]> {
   const raw = await getEncryptedItem(indexKey(userId), userId);
   if (!raw) return [];
-  const value = JSON.parse(raw);
-  if (!Array.isArray(value)) throw new Error("Your private photo index is invalid; it has not been overwritten.");
-  return value as LocalSnap[];
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new Error("Your private photo index is damaged; it has not been overwritten.");
+  }
+  if (!Array.isArray(value) || !value.every(isLocalSnapRecord)) {
+    throw new Error("Your private photo index contains invalid records; it has not been overwritten.");
+  }
+  const ids = value.map(item => item.id);
+  if (new Set(ids).size !== ids.length) {
+    throw new Error("Your private photo index contains duplicate IDs; it has not been overwritten.");
+  }
+  return value;
 }
 
 export function getLocalSnaps(userId: string): Promise<LocalSnap[]> {
