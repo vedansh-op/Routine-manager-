@@ -109,14 +109,14 @@ begin
     with candidates as (
       select d.id
       from public.snap_deliveries d
-      where d.status='uploading'
-        and d.upload_lease_expires_at < now()
-      order by d.upload_lease_expires_at
+      where (d.status='uploading' and d.upload_lease_expires_at < now())
+         or (d.status='expiring' and d.expiry_claimed_at < now()-interval '15 minutes')
+      order by coalesce(d.expiry_claimed_at,d.upload_lease_expires_at)
       limit greatest(0,p_batch_size-v_count)
       for update skip locked
     )
     update public.snap_deliveries d
-      set expiry_previous_status=d.status,
+      set expiry_previous_status=coalesce(d.expiry_previous_status,d.status),
           status='expiring',
           expiry_claimed_at=now()
       from candidates c
