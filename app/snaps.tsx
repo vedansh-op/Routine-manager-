@@ -97,6 +97,11 @@ export default function SnapMemoriesScreen() {
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [selectedMemoryDate, setSelectedMemoryDate] = useState(() => localDateKey(new Date()));
 
+  const activeUserIdRef = useRef<string | null>(user?.id ?? null);
+  useEffect(() => {
+    activeUserIdRef.current = user?.id ?? null;
+  }, [user?.id]);
+
   const refreshGeneration = useRef(0);
   const refresh = useCallback(async () => {
     const generation = ++refreshGeneration.current;
@@ -213,9 +218,11 @@ export default function SnapMemoriesScreen() {
       Alert.alert("Ask your partner to open ONE-OS", "Their device needs to register its private photo-receiving key once. They can open this screen while signed in.");
       return;
     }
+    const expectedUserId = user.id;
+    const isCurrentAccount = () => activeUserIdRef.current === expectedUserId;
     setBusy(true);
     try {
-      await assertActiveSnapUser(user.id);
+      await assertActiveSnapUser(expectedUserId);
       let result: ImagePicker.ImagePickerResult;
       if (source === "camera") {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -278,12 +285,16 @@ export default function SnapMemoriesScreen() {
 
       Alert.alert("Encrypted snap sent", "Your photo is saved privately on this phone. Your partner can receive it when they open ONE-OS.");
     } catch (error) {
-      Alert.alert("Couldn't send this snap", error instanceof Error ? error.message : "Please try again.");
-    } finally { setBusy(false); }
+      if (isCurrentAccount()) Alert.alert("Couldn't send this snap", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      if (isCurrentAccount()) setBusy(false);
+    }
   }
 
   async function receiveSnap(item: PendingSnap) {
     if (!user || !supabase || !deviceKey) return;
+    const expectedUserId = user.id;
+    const isCurrentAccount = () => activeUserIdRef.current === expectedUserId;
     setReceivingId(item.id);
     try {
       await assertActiveSnapUser(user.id);
@@ -340,8 +351,10 @@ export default function SnapMemoriesScreen() {
       setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
       Alert.alert("Memory received", "The photo is saved encrypted on this phone. The temporary encrypted server copy is being retained until ONE-OS can verify a separate permanent copy.");
     } catch (error) {
-      Alert.alert("Couldn't receive this snap", error instanceof Error ? error.message : "Please retry when connected.");
-    } finally { setReceivingId(null); }
+      if (isCurrentAccount()) Alert.alert("Couldn't receive this snap", error instanceof Error ? error.message : "Please retry when connected.");
+    } finally {
+      if (isCurrentAccount()) setReceivingId(null);
+    }
   }
 
   async function openLocal(record: LocalSnap) {
