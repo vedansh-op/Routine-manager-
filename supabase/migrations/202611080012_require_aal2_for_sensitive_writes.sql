@@ -11,11 +11,31 @@ set search_path = ''
 as $$
 declare
   v_role text := coalesce(auth.role(), '');
+  v_space_id uuid;
+  v_space_type text;
 begin
   -- Trusted backend jobs use service_role. SQL editor/migration sessions have
   -- no end-user JWT role; neither is a client-authenticated request.
   if v_role in ('service_role', '') then
     if tg_op = 'DELETE' then return old; else return new; end if;
+  end if;
+
+  -- Personal spaces are outside this shared-feature AAL2 guard.
+  if tg_table_name = 'spaces' then
+    if tg_op = 'DELETE' then
+      if old.space_type <> 'shared' then return old; end if;
+    else
+      if new.space_type <> 'shared' then return new; end if;
+    end if;
+  elsif tg_table_name = 'space_members' then
+    if tg_op = 'DELETE' then v_space_id := old.space_id;
+    else v_space_id := new.space_id;
+    end if;
+    select s.space_type into v_space_type
+    from public.spaces s where s.id = v_space_id;
+    if v_space_type is distinct from 'shared' then
+      if tg_op = 'DELETE' then return old; else return new; end if;
+    end if;
   end if;
 
   if v_role <> 'authenticated' then
@@ -29,7 +49,6 @@ begin
   if tg_op = 'DELETE' then return old; else return new; end if;
 end;
 $$;
-
 revoke all on function public.require_aal2_for_sensitive_write() from public, anon, authenticated;
 
 -- Shared-space lifecycle and membership.
@@ -37,11 +56,6 @@ drop trigger if exists require_aal2_spaces_write on public.spaces;
 create trigger require_aal2_spaces_write
 before insert or update or delete on public.spaces
 for each row
-when (
-  (tg_op = 'INSERT' and new.space_type = 'shared')
-  or (tg_op = 'UPDATE' and (old.space_type = 'shared' or new.space_type = 'shared'))
-  or (tg_op = 'DELETE' and old.space_type = 'shared')
-)
 execute function public.require_aal2_for_sensitive_write();
 
 drop trigger if exists require_aal2_space_members_write on public.space_members;
