@@ -74,7 +74,7 @@ The agreed visible device management and lost-device revocation policy are not i
 **Required remediation**
 Design a server-authoritative device registry with explicit status/revoked_at, authenticated AAL2 revocation, session revocation semantics, and recipient-device eligibility checks in Snap creation and Storage reads. Ensure revocation does not silently destroy the only decryption key for already delivered data. Test lost-device recovery on a replacement device before revoking the old one.
 
-**Status: OPEN — no revocation migration or UI added.**
+**Status: PARTIALLY IMPLEMENTED IN SOURCE — migration `202611080013_device_revocation.sql` adds `revoked_at` and an AAL2-only owner-scoped revocation RPC; `app/account.tsx` lists registered devices and offers revocation of other devices, while protecting the current phone from accidental self-revocation. Snap recipient selection, new-delivery insertion, partner-key visibility, and Storage reads now exclude revoked keys. Non-production tests and recovery/key-continuity tests remain OPEN.
 
 ### AUTH-05 — Recovery password flow is not a key-recovery flow
 
@@ -124,3 +124,14 @@ No migrations were executed. No Supabase project was accessed. No Edge Function 
 - The previous Supabase default storage key is preserved so existing installations can migrate the old AsyncStorage value without forcing an immediate sign-in.
 - After a secure write succeeds, the legacy AsyncStorage entry is removed. Logout removes both secure chunks/manifest and any legacy entry.
 - SecureStore writes use `WHEN_UNLOCKED_THIS_DEVICE_ONLY` accessibility. Physical-device testing is still required; source changes alone do not prove platform behavior or backup exclusion.
+
+
+## AUTH-04 implementation notes
+
+- Device rows are retained with `revoked_at` instead of being deleted, preserving an audit record visible to the account owner.
+- Revocation requires the caller's own device ID and an AAL2 JWT. The RPC does not accept a target user ID.
+- The current installation is identified from its local SecureStore device ID and cannot revoke itself through the account screen.
+- Revoked keys are excluded from partner key discovery, Snap recipient selection, new Snap-delivery insertion, and recipient Storage reads.
+- Revocation cannot remotely erase plaintext or ciphertext already copied to a device. It also does not restore access to old deliveries encrypted to a revoked/lost private key. Key recovery/re-wrapping remains a separate release blocker.
+- Migration ordering: `revoked_at` is added in migration `202611080006_snap_redownload_policy.sql` before migration `202611080008_scope_partner_device_key_visibility.sql` references it; migration 013 repeats the addition with `IF NOT EXISTS` for safe standalone upgrades.
+- Must test on a disposable Supabase project: revoke another device at AAL2; reject AAL1; verify revoked device cannot discover partner keys, receive new deliveries, or download retained ciphertext; verify owner can still see revoked history; confirm current device cannot revoke itself in UI; verify unrelated partner and existing local memories remain intact.
