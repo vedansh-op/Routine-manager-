@@ -498,6 +498,74 @@ export async function scheduleReminder(userId: string, draft: ReminderDraft) {
   });
 }
 
+export async function replaceReminderSet(userId: string, sourcePrefix: string, drafts: ReminderDraft[]) {
+  return withNotificationQueue(async () => {
+    if (!sourcePrefix || sourcePrefix.length > 180 || !Array.isArray(drafts)) {
+      throw new Error("The reminder group is invalid.");
+    }
+    const sourceKeys = drafts.map(item => item.sourceKey);
+    if (sourceKeys.some(key => typeof key !== "string" || !key.startsWith(sourcePrefix)) ||
+        new Set(sourceKeys).size !== sourceKeys.length) {
+      throw new Error("Every reminder must have a unique source key in the selected group.");
+    }
+    const state = await loadState(userId);
+    const existing = state.reminders.filter(item => item.sourceKey?.startsWith(sourcePrefix));
+    if (state.reminders.length - existing.length + drafts.length > 200) {
+      throw new Error("Your local reminder limit is 200. Remove an old reminder before adding another.");
+    }
+    if (drafts.length > 0) {
+      const permission = await Notifications.getPermissionsAsync();
+      if (!permission.granted) throw new Error("Notification permission is off. Enable it first.");
+      await ensureNotificationChannels(state.settings);
+    }
+    const created: Reminder[] = [];
+    try {
+      for (const draft of drafts) {
+        const title = draft.title.trim();
+        if (!title || title.length > 90) throw new Error("Reminder titles must contain 1–90 characters.");
+        if (!isCategory(draft.category)) throw new Error("Choose a valid reminder category.");
+        if (!state.settings.enabled || !state.settings.categoryEnabled[draft.category]) {
+          throw new Error("This notification category is switched off in your settings.");
+        }
+        const previous = existing.find(item => item.sourceKey === draft.sourceKey);
+        const reminder: Reminder = {
+          id: previous?.id ?? makeId(),
+          category: draft.category,
+          title,
+          body: (draft.body ?? "").trim().slice(0, 240),
+          route: draft.route,
+          sourceKey: draft.sourceKey,
+          repeat: draft.repeat,
+          notificationId: null,
+          enabled: true,
+          completed: false,
+          createdAt: previous?.createdAt ?? new Date().toISOString(),
+        };
+        reminder.notificationId = await scheduleNative(userId, reminder, state.settings);
+        created.push(reminder);
+      }
+      const nextState: NotificationState = {
+        ...state,
+        reminders: [...created, ...state.reminders.filter(item => !item.sourceKey?.startsWith(sourcePrefix))],
+      };
+      await saveState(userId, nextState);
+      for (const old of existing) {
+        if (old.notificationId) await Notifications.cancelScheduledNotificationAsync(old.notificationId).catch(() => undefined);
+        const snoozes = state.reminders.filter(item => item.parentReminderId === old.id);
+        for (const snooze of snoozes) {
+          if (snooze.notificationId) await Notifications.cancelScheduledNotificationAsync(snooze.notificationId).catch(() => undefined);
+        }
+      }
+      return created;
+    } catch (error) {
+      for (const reminder of created) {
+        if (reminder.notificationId) await Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => undefined);
+      }
+      throw error;
+    }
+  });
+}
+
 export async function rescheduleReminder(userId: string, reminderId: string, date: Date) {
   return withNotificationQueue(async () => {
     if (!(date instanceof Date) || !Number.isFinite(date.getTime()) || date.getTime() <= Date.now()) {
