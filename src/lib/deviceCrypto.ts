@@ -8,6 +8,11 @@ import { supabase } from "@/lib/supabase";
 const partnerPinAlias = (userId: string, spaceId: string) =>
   "one-os-snap-partner-pin-v1:" + userId + ":" + spaceId;
 
+/** Returns this installation's stable device ID without exposing its private key. */
+export async function getLocalDeviceId(userId: string): Promise<string | null> {
+  return SecureStore.getItemAsync("one-os-snap-device:" + userId);
+}
+
 /** Short SHA-256 fingerprint to compare with the partner over a separate trusted channel. */
 export function partnerKeyFingerprint(ownSecretKey: Uint8Array, partnerPublicKeyHex: string): string {
   const sharedSecret = x25519.getSharedSecret(ownSecretKey, fromHex(partnerPublicKeyHex));
@@ -102,6 +107,7 @@ export async function getPartnerPublicKey(spaceId: string, ownUserId: string): P
     .select("device_id,public_key,last_seen_at")
     .eq("user_id", partner.user_id)
     .gt("last_seen_at", freshness)
+    .is("revoked_at", null)
     .order("last_seen_at", { ascending: false })
     .limit(1)
     .maybeSingle();
