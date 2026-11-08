@@ -15,6 +15,7 @@ type Store = {
   completions: string[];
   ready: boolean;
   storageError: string | null;
+  canEdit: boolean;
   addTask: (title: string) => void;
   toggleTask: (id: string) => void;
   addHabit: (title: string) => void;
@@ -114,20 +115,24 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   }, [tasks, habits, completions, ready, storageUnlocked, userId, activeUserId]);
 
   const addTask = useCallback((title: string) => {
+    if (!storageUnlocked || !ready || activeUserId !== userId) return;
     const value = title.trim();
     if (value) setTasks(old => [{ id: uid(), title: value, completed: false, createdAt: new Date().toISOString() }, ...old]);
   }, []);
-  const toggleTask = useCallback((id: string) => setTasks(old => old.map(t => t.id === id ? { ...t, completed: !t.completed } : t)), []);
+  const toggleTask = useCallback((id: string) => { if (!storageUnlocked || !ready || activeUserId !== userId) return; setTasks(old => old.map(t => t.id === id ? { ...t, completed: !t.completed } : t)); }, [storageUnlocked, ready, activeUserId, userId]);
   const addHabit = useCallback((title: string) => {
+    if (!storageUnlocked || !ready || activeUserId !== userId) return;
     const value = title.trim();
     if (value) setHabits(old => [{ id: uid(), title: value, createdAt: new Date().toISOString(), archived: false }, ...old]);
   }, []);
   const toggleHabitToday = useCallback((id: string) => {
+    if (!storageUnlocked || !ready || activeUserId !== userId) return;
     const key = id + ":" + today();
     setCompletions(old => old.includes(key) ? old.filter(x => x !== key) : [...old, key]);
-  }, []);
+  }, [storageUnlocked, ready, activeUserId, userId]);
 
-  const value = useMemo(() => ({ tasks, habits, completions, ready, storageError, addTask, toggleTask, addHabit, toggleHabitToday }), [tasks, habits, completions, ready, storageError, addTask, toggleTask, addHabit, toggleHabitToday]);
+  const canEdit = ready && storageUnlocked && activeUserId === userId;
+  const value = useMemo(() => ({ tasks, habits, completions, ready, storageError, canEdit, addTask, toggleTask, addHabit, toggleHabitToday }), [tasks, habits, completions, ready, storageError, canEdit, addTask, toggleTask, addHabit, toggleHabitToday]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 export function useAppStore() {
