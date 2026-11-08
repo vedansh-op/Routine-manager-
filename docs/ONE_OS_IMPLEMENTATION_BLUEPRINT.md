@@ -1,9 +1,9 @@
 # ONE-OS implementation blueprint
 
-**Status:** Phase 1 architecture baseline
-**Scope:** Planning and technical design only. This document does not deploy services, change Supabase, or claim planned features are implemented.
+**Status:** Phase 1 engineering/design baseline prepared; formal exit held for external security validation. See ONE_OS_PHASE_1_EXIT_REVIEW.md.
+**Scope:** Product architecture and implementation baseline. Source-level foundations exist on the feature branch, but proposed Drive backup/recovery behavior is not implemented. This document does not authorize deployment or claim live Supabase security.
 **Repository:** vedansh-op/Routine-manager-
-**Baseline branch:** main
+**Review branch:** phase-1/one-os-architecture-blueprint (open PR #1; not merged)
 
 ## 1. Product and engineering principles
 
@@ -22,12 +22,14 @@
 
 The repository already contains Expo SDK 54, Expo Router, React Native and TypeScript; email/password Supabase authentication and persisted sessions; private profiles and two-person shared-space invitations; local encrypted personal task/habit data using XChaCha20-Poly1305; weekly aggregate reports; shared activity calendar with UTC storage and viewer-local rendering; Snap camera/gallery selection, encrypted photo delivery, local encrypted photo vault, recipient acknowledgement and pending-delivery expiry; X25519 device key registration and first-contact partner-key fingerprint pinning; Supabase migrations and Edge Functions for Snap coordination; and a GitHub Actions Android debug APK workflow.
 
-Important current limitations recorded in the repository:
+Important current limitations:
 - Detailed task/habit history is local-only and is not yet backed up to Drive.
 - Device private keys are device-bound; a reviewed recovery/key-rotation flow is missing.
-- Snap delivery currently uses Supabase Storage for encrypted temporary objects; the planned Drive-based delivery path is not implemented.
-- MFA enforcement, complete device management, account deletion workflow, End Connection workflow, Drive integration, archive versioning, integrity repair and on-demand cloud history retrieval require implementation and verification.
-- Supabase migrations and Edge Functions still require deployment/configuration and two-account testing.
+- Snap delivery currently uses Supabase Storage for temporary encrypted objects; the planned Drive delivery path and trusted permanent-copy proof are not implemented.
+- Verified-email and AAL2 app/database guards, TOTP factor UI, secure session storage and device-key revocation are present in source. Provider/database behavior still needs disposable-project tests. Device-key revocation does not revoke the lost phone's Supabase auth session.
+- Recovery codes, encryption-key recovery envelopes, historical-key restore, seven-day account deletion, complete shared-data archive coverage, Drive integration, archive versioning, integrity repair and on-demand history retrieval remain unimplemented or unverified.
+- Local task/habit/routine/calendar/focus notification foundations are present. Push, travel/location-aware reminders and physical Android delivery verification remain open.
+- Supabase migrations and Edge Functions require compilation, deployment configuration and two-account tests in a disposable project before production consideration.
 
 Do not remove or replace existing working flows while implementing the roadmap.
 
@@ -201,18 +203,29 @@ Logical entities to validate against existing schema before adding migrations:
 
 Before migrations, inspect all existing tables, RLS policies, RPCs and Edge Functions. Prefer extending existing structures over duplicating them. OAuth token storage must use provider-appropriate secure handling; do not store raw refresh tokens in ordinary application tables.
 
-## 12. Phase 1 exit criteria
+## 12. Phase 1 exit criteria and evidence
 
-- [ ] Existing source/schema inventory is complete.
-- [ ] Data ownership matrix is reviewed.
-- [ ] Threat model covers account takeover, lost device, partner disconnect, compromised device, Drive account revocation, replay, tampering and partial upload.
-- [ ] Archive manifest and version format are specified.
-- [ ] Key hierarchy and recovery protocol receive cryptographic review.
-- [ ] On-demand index/query protocol is specified.
-- [ ] Supabase-vs-Drive boundary is documented.
-- [ ] Migration plan maps new concepts to existing schema without duplicate sources of truth.
-- [ ] Failure-state and retry matrix is written.
-- [ ] No production migration or deployment occurs until design review is complete.
+The engineering/design documents are prepared and linked below. The phase is not formally signed off until independent cryptographic review and non-production validation are complete.
+
+- [x] Repository/source and checked-in schema inventory — documented for the feature branch; live deployed schema remains unknown.
+- [x] Data ownership matrix — see ONE_OS_PHASE_1_SCHEMA_AND_ARCHIVE_SPEC.md.
+- [x] Threat model — see ONE_OS_PHASE_1_THREAT_MODEL.md.
+- [x] Supabase-vs-Drive boundary — specified; Drive integration itself is not implemented.
+- [x] Archive manifest/version and immutable-object contract — specified; exact cryptographic construction awaits independent review.
+- [x] On-demand encrypted index/query protocol — specified; index and selective backup retrieval code are not implemented.
+- [x] Migration map/no-duplicate-source rules — documented against the current schema.
+- [x] Failure-state/retry matrix — see ONE_OS_PHASE_1_FAILURE_MATRIX.md.
+- [x] Read-only database and Storage audit scripts — checked into supabase/tests/.
+- [x] Source-level local-key bootstrap safety and automated regression suite — present and CI-verified.
+- [x] Local notification persisted-state validation and regression tests — present and CI-verified.
+- [ ] Independent cryptographic review of key separation, recovery envelope, nonce/AAD rules and device replacement.
+- [ ] PostgreSQL migration compilation/application, effective grants/RLS/Storage/trigger/RPC tests in a disposable Supabase project.
+- [ ] Two-account concurrency, MFA/AAL2, Snap lifecycle and archive-retention tests in that project.
+- [ ] Physical Android install/reboot/SecureStore/notification/2-device tests.
+
+The latest verified TypeScript workflow run for the source/test changes is 42530632242 on commit 1afabcc1a0e97c42196a6716ba7eae978427d5a1. It passed TypeScript validation, 27 recovery tests and 6 notification-state tests. This is not PostgreSQL, provider or physical-device evidence.
+
+The authoritative decision and exact external gates are in ONE_OS_PHASE_1_EXIT_REVIEW.md. No production SQL or service deployment is authorized by completing this document.
 
 ## 13. Implementation sequence after Phase 1
 
@@ -228,11 +241,12 @@ Before migrations, inspect all existing tables, RLS policies, RPCs and Edge Func
 10. Implement End Connection/account deletion lifecycle.
 11. Run strict security, RLS, Edge Function, recovery, corruption, quota, offline and two-device tests before release.
 
-## 14. Explicit non-goals for this phase
+## 14. Explicit boundaries for this phase
 
-- No source-code feature implementation.
-- No Supabase SQL execution or migration deployment.
-- No Edge Function deployment.
-- No Google Drive OAuth connection or token collection.
-- No production data changes.
-- No APK release claim.
+- The current branch contains source-level foundations and tests. Their presence does not satisfy server/provider/device validation.
+- No Supabase SQL execution or migration deployment is performed by this design review.
+- No Edge Function deployment or production cron configuration is performed.
+- No Google Drive OAuth connection or token collection is implemented.
+- No production data, settings, secrets, Storage objects or user sessions are changed.
+- No current feature-branch APK or production release is claimed.
+- Phase 1 formal exit remains held until the external validation gates in ONE_OS_PHASE_1_EXIT_REVIEW.md pass.
