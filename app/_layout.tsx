@@ -121,7 +121,7 @@ function SessionGate() {
             );
             if (habit) {
               const completionKey = habit.id + ":" + todayKey();
-              if (!completions.includes(completionKey)) toggleHabitToday(habit.id);
+              if (!completions.includes(completionKey) && !toggleHabitToday(habit.id)) throw new Error("The habit check-in could not be saved.");
               const reminderIds = habit.reminderIds ?? (habit.reminderId ? [habit.reminderId] : []);
               for (const reminderId of reminderIds) await cancelSnoozesForReminder(user.id, reminderId);
               if (data.repeatKind === "once") await completeReminder(user.id, data.reminderId);
