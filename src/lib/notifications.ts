@@ -26,6 +26,7 @@ export type Reminder = {
   title: string;
   body: string;
   route?: string;
+  sourceKey?: string;
   repeat: RepeatRule;
   notificationId: string | null;
   enabled: boolean;
@@ -70,6 +71,7 @@ export type ReminderDraft = {
   title: string;
   body?: string;
   route?: string;
+  sourceKey?: string;
   repeat: RepeatRule;
 };
 
@@ -172,6 +174,7 @@ function normalizeState(value: unknown): NotificationState {
         const row = item as Partial<Reminder>;
         return typeof row.id === "string" && isCategory(row.category) &&
           typeof row.title === "string" && typeof row.body === "string" &&
+          (row.sourceKey === undefined || typeof row.sourceKey === "string") &&
           typeof row.enabled === "boolean" && typeof row.completed === "boolean" &&
           (row.notificationId === null || typeof row.notificationId === "string") &&
           Boolean(row.repeat && typeof row.repeat === "object");
@@ -345,26 +348,34 @@ export async function scheduleReminder(userId: string, draft: ReminderDraft) {
   const permission = await Notifications.getPermissionsAsync();
   if (!permission.granted) throw new Error("Notification permission is off. Enable it first.");
   await ensureNotificationChannels(state.settings);
+  if (draft.sourceKey && draft.sourceKey.length > 180) throw new Error("Reminder source key is too long.");
+  const existing = draft.sourceKey
+    ? state.reminders.find(item => item.sourceKey === draft.sourceKey)
+    : undefined;
   const reminder: Reminder = {
-    id: makeId(),
+    id: existing?.id ?? makeId(),
     category: draft.category,
     title,
     body,
     route: draft.route,
+    sourceKey: draft.sourceKey,
     repeat: draft.repeat,
     notificationId: null,
     enabled: true,
     completed: false,
-    createdAt: new Date().toISOString(),
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
   };
   const notificationId = await scheduleNative(userId, reminder, state.settings);
   reminder.notificationId = notificationId;
-  state.reminders = [reminder, ...state.reminders].slice(0, 200);
+  state.reminders = [reminder, ...state.reminders.filter(item => item.id !== reminder.id)].slice(0, 200);
   try {
     await saveState(userId, state);
   } catch (error) {
     if (notificationId) await Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => undefined);
     throw error;
+  }
+  if (existing?.notificationId && existing.notificationId !== notificationId) {
+    await Notifications.cancelScheduledNotificationAsync(existing.notificationId).catch(() => undefined);
   }
   return reminder;
 }
