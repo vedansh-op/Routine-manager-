@@ -66,7 +66,10 @@ test("decrypting existing ciphertext with a missing key never creates a replacem
 test("fresh-key initialization is explicit, persisted, and verified", async () => {
   storedValue = null;
   writes = 0;
-  await store.initializeUserKeyForFreshInstall("test");
+  await Promise.all([
+    store.initializeUserKeyForFreshInstall("test"),
+    store.initializeUserKeyForFreshInstall("test"),
+  ]);
   assert.equal(writes, 1);
   assert.match(storedValue, /^(?:[0-9a-f]{2}){32}$/i);
 });
