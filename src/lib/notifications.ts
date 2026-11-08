@@ -468,7 +468,20 @@ export async function scheduleReminder(userId: string, draft: ReminderDraft) {
   };
   const notificationId = await scheduleNative(userId, reminder, state.settings);
   reminder.notificationId = notificationId;
-  state.reminders = [reminder, ...state.reminders.filter(item => item.id !== reminder.id)].slice(0, 200);
+  const staleSnoozes = existing
+    ? state.reminders.filter(item => item.parentReminderId === existing.id)
+    : [];
+  for (const snoozed of staleSnoozes) {
+    if (snoozed.notificationId) {
+      await Notifications.cancelScheduledNotificationAsync(snoozed.notificationId).catch(() => undefined);
+    }
+  }
+  state.reminders = [
+    reminder,
+    ...state.reminders.filter(item =>
+      item.id !== reminder.id && item.parentReminderId !== reminder.id,
+    ),
+  ].slice(0, 200);
   try {
     await saveState(userId, state);
   } catch (error) {
