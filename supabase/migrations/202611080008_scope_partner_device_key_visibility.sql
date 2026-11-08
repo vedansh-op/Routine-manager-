@@ -11,7 +11,7 @@ create policy "Users can read own and active two-person shared device public key
   for select
   to authenticated
   using (
-    user_id = (select auth.uid())
+    (user_id = (select auth.uid()) and revoked_at is null)
     or exists (
       select 1
       from public.space_members mine
