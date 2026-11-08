@@ -73,3 +73,26 @@ test("fresh-key initialization is explicit, persisted, and verified", async () =
   assert.equal(writes, 1);
   assert.match(storedValue, /^(?:[0-9a-f]{2}){32}$/i);
 });
+
+
+test("a malformed existing key is never replaced during encrypted reads", async () => {
+  storedValue = "not-a-valid-hex-key";
+  writes = 0;
+  await assert.rejects(
+    store.getEncryptedItem("one-os-v2:test", "test"),
+    /malformed/i,
+  );
+  assert.equal(writes, 0);
+  assert.equal(storedValue, "not-a-valid-hex-key");
+});
+
+test("a correctly encoded key with the wrong length is rejected without replacement", async () => {
+  storedValue = "ab".repeat(31);
+  writes = 0;
+  await assert.rejects(
+    store.getEncryptedItem("one-os-v2:test", "test"),
+    /invalid/i,
+  );
+  assert.equal(writes, 0);
+  assert.equal(storedValue, "ab".repeat(31));
+});
