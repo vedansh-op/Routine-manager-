@@ -74,10 +74,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (alive) setLoading(false);
     });
     Linking.getInitialURL().then(url => {
-      if (url) void acceptAuthUrl(url, setRecovery);
+      if (url) void acceptAuthUrl(url, setRecovery, () => alive);
     });
     const linkListener = Linking.addEventListener("url", ({ url }) => {
-      void acceptAuthUrl(url, setRecovery);
+      void acceptAuthUrl(url, setRecovery, () => alive);
     });
     return () => {
       alive = false;
