@@ -284,10 +284,9 @@ export default function SnapMemoriesScreen() {
         body: { deliveryId: item.id },
       });
       if (ackError) {
-        // Download acknowledgement keeps the server ciphertext and delivery row.
-        // A 404 is not treated as proof of permanent-copy verification.
-        const status = (ackError as { context?: { status?: number } }).context?.status;
-        if (status !== 404) throw ackError;
+        // Keep the inbox item visible until the server confirms its download state.
+        // A missing row is not treated as proof that a permanent copy was verified.
+        throw ackError;
       }
       setPending(old => old.filter(snap => snap.id !== item.id));
       setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
