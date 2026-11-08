@@ -335,6 +335,7 @@ export default function SnapMemoriesScreen() {
         // A missing row is not treated as proof that a permanent copy was verified.
         throw ackError;
       }
+      await assertActiveSnapUser(user.id);
       setPending(old => old.filter(snap => snap.id !== item.id));
       setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
       Alert.alert("Memory received", "The photo is saved encrypted on this phone. The temporary encrypted server copy is being retained until ONE-OS can verify a separate permanent copy.");
