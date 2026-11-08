@@ -119,6 +119,7 @@ export default function AccountScreen() {
       }) : <Text style={s.description}>No registered devices found yet. Open ONE-OS on this phone after completing MFA.</Text>}
     </View>
 
+    <Pressable onPress={() => router.push("/security")} style={s.securityButton}><Text style={s.securityButtonText}>Manage authenticators</Text></Pressable>
     <Pressable onPress={signOut} style={s.button}><Text style={s.buttonText}>Sign out</Text></Pressable>
     <Pressable onPress={() => router.back()}><Text style={s.back}>Back to ONE-OS</Text></Pressable>
   </ScrollView>;
@@ -141,6 +142,8 @@ const s=StyleSheet.create({
   deviceId:{color:"#c7bfff",fontSize:11,marginTop:8},deviceDate:{color:"#858b98",fontSize:10,marginTop:6},
   revokeButton:{alignSelf:"flex-start",borderWidth:1,borderColor:"#70404b",borderRadius:10,paddingVertical:9,paddingHorizontal:13,marginTop:12},
   revokeText:{color:"#ffb7c5",fontSize:11,fontWeight:"800"},disabled:{opacity:0.5},
+  securityButton:{backgroundColor:"#28243b",borderWidth:1,borderColor:"#554b7b",borderRadius:14,padding:17,alignItems:"center",marginTop:24},
+  securityButtonText:{color:"#d1c9ff",fontWeight:"700"},
   button:{backgroundColor:"#3b2730",borderRadius:14,padding:17,alignItems:"center",marginTop:24},
   buttonText:{color:"#ffb7c5",fontWeight:"700"},back:{color:"#c7bfff",textAlign:"center",marginTop:20},
 });
