@@ -161,3 +161,57 @@ Before release, use a disposable Supabase project and two physical Android devic
 The key-wrapping approach is technically compatible with the existing XChaCha20-Poly1305 and HKDF-SHA256 dependencies. However, the server-side historical-delivery authorization and device-ID lifecycle must be designed and tested before source implementation. In particular, do not implement a client-only restore that silently reuses or reactivates a revoked device ID.
 
 No migration, Edge Function, production SQL, Drive OAuth, or application code was changed as part of this design gate.
+
+## 9. Current call-site audit and implementation order
+
+The source audit traced these call sites:
+
+- `app/_layout.tsx` and `src/store/AppStore.tsx` both call `ensureDeviceCryptoKey(userId)`; registration is coalesced in-process, but these two entry points must continue to resolve to the same active installation identity.
+- `app/snaps.tsx` uses the returned active key for partner fingerprinting and normal Snap decryption. Historical keys must never be returned by this API or selected for new outgoing deliveries.
+- `app/account.tsx` reads the active installation ID through `getLocalDeviceId()`; it must continue to report only the active installation, not a historical key.
+- `src/lib/secureLocalStore.ts` owns the account data key used by task/habit storage and the Snap vault. `src/store/AppStore.tsx` stores encrypted task data under `one-os-v2:<userId>`; `src/lib/snapVault.ts` stores encrypted Snap files and an encrypted index.
+- `app/snaps.tsx` saves sender and received plaintext into the encrypted local vault, then later decrypts the local file for preview. The local vault data key is therefore required independently of the historical X25519 key.
+
+### Findings that affect migration safety
+
+1. The active X25519 device ID and private key are stored in two separate legacy aliases. The current code correctly rejects a one-sided/missing pair; a migration must retain this fail-closed behavior.
+2. The account data key is created on demand by `createUserKey()`. It is used by both AsyncStorage encrypted records and the Snap vault. A missing key can make existing ciphertext unreadable; key creation must become an explicit first-install operation, not a generic fallback.
+3. The AppStore migration marker is separate from the encryption key. It does not prove that the account has no encrypted records or vault files.
+4. A successful local vault restore needs to verify both the encrypted index and at least one referenced file where available. If the vault is empty, the recovery envelope's authenticated metadata and a separately stored key-check value must validate the restored key.
+5. Expo SecureStore does not provide a multi-key transaction. The registry pointer pattern is therefore required; write candidate aliases first, read them back, verify them, and switch one pointer last. Keep rollback material until a subsequent successful launch.
+6. Existing normal Snap downloads use the active key only. Historical Snap recovery must be a separate explicit API and UI flow, backed by the selected challenge/Edge Function design. Do not add historical-key fallback to `decryptSnap()` or normal inbox download logic.
+
+### Implementation sequence (source-only, before server work)
+
+A. Add a versioned local key registry module and typed records. It must support one active device key, multiple historical decrypt-only keys, and a data-key version without exposing raw key material to UI state.
+
+B. Add read-only legacy inspection. Determine whether each alias exists, validate formats, and compare the derived public key to the matching own `device_crypto_keys` row. Do not write or delete anything in this phase.
+
+C. Add a local encrypted-data inventory. Check the AppStore ciphertext key and Snap vault index/files without decrypting or changing them. Treat inaccessible filesystem state or partial inventory as unknown, not empty.
+
+D. Add an explicit bootstrap decision:
+- truly fresh local account: create initial active device key and data key;
+- valid legacy state: migrate to versioned aliases and verify;
+- encrypted content exists but its key is missing: stop and require recovery;
+- partial/malformed/mismatched key material: stop and preserve all values;
+- offline/unavailable server validation: keep already-valid local data usable where safe, but defer registration/migration that requires server confirmation.
+
+E. Add temporary restore slots and a verified pointer switch with rollback. Recovery must not overwrite the existing active alias, and must not register a historical key as active.
+
+F. Only after local storage passes tests, implement the recovery envelope creation/restore UI. Historical-download Edge Function and private challenge tables are a separate server-side phase.
+
+### Required tests before any recovery implementation is considered complete
+
+- Fresh install creates one active device key and one data key exactly once.
+- Concurrent bootstrap from AppStore, root layout, and Snap screen does not create divergent keys.
+- Both legacy aliases present and valid migrate without changing derived public key or device ID.
+- Either legacy alias missing, malformed, or mismatched stops without overwriting any alias.
+- Existing encrypted AppStore record with missing data key is detected and never replaced with a fresh key.
+- Existing Snap vault index or file with missing data key is detected and never overwritten.
+- Empty new vault can be distinguished from unavailable/inaccessible filesystem state.
+- Interrupted candidate write leaves old pointer active; interrupted pointer switch rolls back safely.
+- Restored historical key can decrypt only historical envelopes in the explicit recovery path and cannot be selected by ordinary Snap sending.
+- Restored data key authenticates the encrypted AppStore record and Snap vault index/file before success is shown.
+- Sign-out, account switching, app restart, and reinstall do not cross-contaminate key namespaces.
+
+Status: source call sites reviewed; no key-storage code has been changed yet. These checks are implementation gates, not claims of completed testing.
