@@ -98,7 +98,7 @@ These are source-level features; CI and real-device behavior still need verifica
 
 - Add recurring task due dates, deletion lifecycle cancellation, and tests for task-alert replacement across partial failures.
 - Make habit reminders completion-aware so a completed habit does not produce an unnecessary alert later that day; define next-eligible-day and streak rules.
-- Implement a routine model and step timing before routine-transition notifications.
+- Add routine editing and completion/progress tracking; current routine steps are defined at creation and only the overall schedule can be changed.
 - Add calendar alert lead-time preferences, event deletion cancellation and durable per-member reconciliation.
 - Add source-item IDs and an idempotent reconciliation job so repeated app opens never duplicate reminders.
 - Extend notification history with missed/delayed state and reliable background delivery reconciliation.
