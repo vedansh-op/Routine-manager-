@@ -99,11 +99,14 @@ export default function SecurityScreen() {
     {loading ? <ActivityIndicator color="#b7adff" /> : <>
       <View style={s.card}>
         <Text style={s.label}>VERIFIED TOTP FACTORS</Text>
-        {factors.map((factor, index) => <View key={factor.id} style={s.factor}>
-          <Text style={s.factorName}>{factor.friendly_name || "ONE-OS authenticator"}</Text>
-          <Text style={s.body}>{index === 0 ? "Primary / first enrolled" : "Additional authenticator"}</Text>
-          {factors.length > 1 && index > 0 ? <Pressable disabled={busy} onPress={() => removeBackup(factor)}><Text style={s.remove}>Remove additional authenticator</Text></Pressable> : null}
-        </View>)}
+        {factors.map(factor => {
+          const isBackup = factor.friendly_name === "ONE-OS backup authenticator";
+          return <View key={factor.id} style={s.factor}>
+            <Text style={s.factorName}>{factor.friendly_name || "ONE-OS authenticator"}</Text>
+            <Text style={s.body}>{isBackup ? "Backup authenticator" : "Primary authenticator"}</Text>
+            {isBackup && factors.length > 1 ? <Pressable disabled={busy} onPress={() => removeBackup(factor)}><Text style={s.remove}>Remove backup authenticator</Text></Pressable> : null}
+          </View>;
+        })}
         {factors.length === 0 ? <Text style={s.body}>No verified authenticator was found. Complete the sign-in MFA setup first.</Text> : null}
       </View>
       {pendingFactor ? <View style={s.card}>
