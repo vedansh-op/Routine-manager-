@@ -4,7 +4,7 @@ import { Link } from "expo-router";
 import { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { useAuth } from "@/auth/AuthProvider";
 import { useAppStore } from "@/store/AppStore";
-import { cancelReminder, getNotificationState, scheduleReminder } from "@/lib/notifications";
+import { replaceReminderSet } from "@/lib/notifications";
 
 const leadOptions = [
   { minutes: 60, label: "1h before" },
@@ -39,18 +39,16 @@ export default function Tasks() {
 
     setSchedulingId(taskId);
     const selectedOffsets = [...selectedLeadTimes].sort((a, b) => b - a);
-    const scheduledKeys = new Set<string>();
     try {
       let skippedPastLead = false;
-      for (const minutes of selectedOffsets) {
+      const drafts = selectedOffsets.flatMap(minutes => {
         const alertAt = new Date(dueAt.getTime() - minutes * 60_000);
         if (alertAt.getTime() <= Date.now()) {
           skippedPastLead = true;
-          continue;
+          return [];
         }
-        const sourceKey = "task:" + task.id + ":lead:" + minutes;
-        const reminder = await scheduleReminder(user.id, {
-          category: "task",
+        return [{
+          category: "task" as const,
           title: task.title,
           body: minutes === 0
             ? "This task is due now."
@@ -58,27 +56,12 @@ export default function Tasks() {
               ? "This task is overdue by " + (Math.abs(minutes) >= 60 ? Math.abs(minutes) / 60 + " hour" : Math.abs(minutes) + " minutes") + "."
               : "This task is due in " + (minutes >= 60 ? minutes / 60 + " hour" + (minutes === 60 ? "" : "s") : minutes + " minutes") + ".",
           route: "/tasks",
-          sourceKey,
-          repeat: { kind: "once", date: alertAt.toISOString() },
-        });
-        scheduledKeys.add(sourceKey);
-        void reminder;
-      }
-
-      const current = await getNotificationState(user.id);
-      const related = current.reminders.filter(item => item.sourceKey?.startsWith("task:" + task.id + ":lead:"));
-      const activeIds: string[] = [];
-      for (const reminder of related) {
-        if (reminder.sourceKey && scheduledKeys.has(reminder.sourceKey)) {
-          activeIds.push(reminder.id);
-        } else {
-          await cancelReminder(user.id, reminder.id);
-        }
-      }
-      const previousIds = task.reminderIds ?? (task.reminderId ? [task.reminderId] : []);
-      for (const previousId of previousIds) {
-        if (!activeIds.includes(previousId)) await cancelReminder(user.id, previousId).catch(() => undefined);
-      }
+          sourceKey: "task:" + task.id + ":lead:" + minutes,
+          repeat: { kind: "once" as const, date: alertAt.toISOString() },
+        }];
+      });
+      const created = await replaceReminderSet(user.id, "task:" + task.id + ":lead:", drafts);
+      const activeIds = created.map(item => item.id);
       setTaskReminder(task.id, activeIds, dueAt.toISOString());
 
       if (skippedPastLead) {
