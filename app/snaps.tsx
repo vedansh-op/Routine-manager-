@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator, Alert, AppState, Image, Modal, Pressable,
   ScrollView, StyleSheet, Text, View,
@@ -97,21 +97,34 @@ export default function SnapMemoriesScreen() {
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [selectedMemoryDate, setSelectedMemoryDate] = useState(() => localDateKey(new Date()));
 
+  const refreshGeneration = useRef(0);
   const refresh = useCallback(async () => {
-    if (!user) { setLoading(false); return; }
+    const generation = ++refreshGeneration.current;
+    const expectedUserId = user?.id ?? null;
+    const isCurrent = () =>
+      refreshGeneration.current === generation && (user?.id ?? null) === expectedUserId;
+    if (!user) {
+      setLocalSnaps([]); setPending([]); setDeviceKey(null); setSpaceId(null);
+      setPartnerId(null); setPartnerReady(false); setPartnerTrusted(false);
+      setPartnerKeyChanged(false); setPartnerFingerprint(""); setPartnerDeviceId(null);
+      setPartnerPublicKeyHex(null); setLoading(false);
+      return;
+    }
     setLoading(true);
+    // Never leave the previous account's private metadata visible while this
+    // account's data is loading.
+    setLocalSnaps([]); setPending([]); setDeviceKey(null); setSpaceId(null);
+    setPartnerId(null); setPartnerReady(false); setPartnerTrusted(false);
+    setPartnerKeyChanged(false); setPartnerFingerprint(""); setPartnerDeviceId(null);
+    setPartnerPublicKeyHex(null);
     try {
-      // Load the encrypted on-device gallery first. It remains usable even if
-      // the network or Supabase is unavailable; remote sync is a separate step.
       const snaps = await getLocalSnaps(user.id);
+      if (!isCurrent()) return;
       setLocalSnaps(snaps);
-      setDeviceKey(null);
 
-      if (!supabase) {
-        setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPartnerTrusted(false); setPartnerKeyChanged(false); setPartnerFingerprint(""); setPartnerDeviceId(null); setPartnerPublicKeyHex(null); setPending([]);
-        return;
-      }
+      if (!supabase) return;
       const key = await ensureDeviceCryptoKey(user.id);
+      if (!isCurrent()) return;
       setDeviceKey(key);
       const { data: membership, error: memberError } = await supabase
         .from("space_members")
@@ -119,13 +132,13 @@ export default function SnapMemoriesScreen() {
         .eq("user_id", user.id)
         .limit(1)
         .maybeSingle();
+      if (!isCurrent()) return;
       if (memberError) throw memberError;
-      if (!membership?.space_id) {
-        setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPartnerTrusted(false); setPartnerKeyChanged(false); setPartnerFingerprint(""); setPartnerDeviceId(null); setPartnerPublicKeyHex(null); setPending([]);
-        return;
-      }
+      if (!membership?.space_id) return;
       setSpaceId(membership.space_id);
+
       const partner = await getPartnerPublicKey(membership.space_id, user.id);
+      if (!isCurrent()) return;
       setPartnerId(partner?.userId ?? null);
       setPartnerDeviceId(partner?.deviceId ?? null);
       setPartnerPublicKeyHex(partner?.publicKeyHex ?? null);
@@ -133,13 +146,12 @@ export default function SnapMemoriesScreen() {
       setPartnerReady(hasPartnerKey);
       if (partner?.publicKeyHex) {
         const pinned = await getPinnedPartnerPublicKey(user.id, membership.space_id);
+        if (!isCurrent()) return;
         setPartnerTrusted(pinned === partner.publicKeyHex);
         setPartnerKeyChanged(Boolean(pinned && pinned !== partner.publicKeyHex));
         setPartnerFingerprint(partnerKeyFingerprint(key.secretKey, partner.publicKeyHex));
       } else {
-        setPartnerTrusted(false);
-        setPartnerKeyChanged(false);
-        setPartnerFingerprint("");
+        setPartnerTrusted(false); setPartnerKeyChanged(false); setPartnerFingerprint("");
       }
 
       const { data, error } = await supabase
@@ -147,18 +159,22 @@ export default function SnapMemoriesScreen() {
         .select("id,space_id,sender_id,recipient_id,object_path,status,ephemeral_public_key,wrap_salt,wrap_nonce,wrapped_file_key,content_nonce,mime_type,file_size_bytes,captured_at")
         .eq("recipient_id", user.id)
         .eq("recipient_device_id", key.deviceId)
-        // Keep downloaded-but-not-permanently-backed-up deliveries recoverable.
-        // The encrypted server copy is intentionally retained until Drive proof exists.
         .in("status", ["pending", "downloaded"])
         .order("created_at", { ascending: true });
+      if (!isCurrent()) return;
       if (error) throw error;
       setPending((data ?? []) as PendingSnap[]);
     } catch (error) {
-      Alert.alert("Couldn't refresh memories", error instanceof Error ? error.message : "Please try again.");
-    } finally { setLoading(false); }
+      if (isCurrent()) Alert.alert("Couldn't refresh memories", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      if (isCurrent()) setLoading(false);
+    }
   }, [user]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+    return () => { refreshGeneration.current += 1; };
+  }, [refresh]);
   useEffect(() => {
     const sub = AppState.addEventListener("change", state => {
       if (state === "active") void refresh();
