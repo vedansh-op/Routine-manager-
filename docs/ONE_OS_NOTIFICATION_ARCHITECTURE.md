@@ -85,7 +85,7 @@ Location reminders require a dedicated privacy review, foreground/background per
 - Quiet hours shift one-time reminders to the next quiet-hours end; repeating reminders are rejected when their selected time falls in quiet hours.
 - Category and master switches cancel/reschedule pending local reminders.
 - Notification actions support snooze 10 minutes, mark done, and open the relevant screen. Snoozes are parent-linked so completing a task, habit or routine cancels dependent alerts. Task Done completes the task and cancels all its lead-time alerts; habit Done checks in today, cancels any pending snoozes for that habit, and preserves future selected-day repeats; routine Done cancels the remaining steps and finish alert. Action history is recorded only after the underlying task/habit/routine action succeeds.
-- Task rows can schedule multiple deadline alerts (1 hour, 30 minutes, 15 minutes, 5 minutes, at due time and/or 1 hour overdue); selections are idempotently linked by task ID, and completing or deleting a task cancels every linked alert.
+- Task rows can schedule multiple deadline alerts (1 hour, 30 minutes, 15 minutes, 5 minutes, at due time and/or 1 hour overdue); grouped replacement is atomic (a failed new set leaves the previous set intact), selections are idempotently linked by task ID, and completing or deleting a task cancels every linked alert.
 - Habits can schedule local check-ins every day or on individually selected weekdays; reminders use stable habit source keys and can be changed or removed. Checking a habit off in the app also cancels pending snoozes for that habit without disabling its future schedule.
 - Focus sessions schedule an end alert and a 5-minute break-return alert; ending the session cancels both, and failure to add the optional break alert does not discard the end alert.
 - Upcoming shared calendar events are reconciled into local alerts at a user-configurable advance time (5, 10, 15, 30, 60 or 120 minutes), for events within the next 30 days (up to 40 events per sync). Stable source keys prevent duplicates on refresh; alerts for removed, passed or no-longer-upcoming events are cancelled.
@@ -97,18 +97,15 @@ These are source-level features; CI and real-device behavior still need verifica
 
 ## 5. Remaining integration work
 
-- Add recurring task due dates, deletion lifecycle cancellation, and tests for task-alert replacement across partial failures.
-- Make habit reminders completion-aware so a completed habit does not produce an unnecessary alert later that day; define next-eligible-day and streak rules.
-- Add routine editing and completion/progress tracking; current routine steps are defined at creation and only the overall schedule can be changed.
-- Add calendar alert lead-time preferences, event deletion cancellation and durable per-member reconciliation.
-- Add source-item IDs and an idempotent reconciliation job so repeated app opens never duplicate reminders.
-- Extend notification history with missed/delayed state and reliable background delivery reconciliation.
-- Build task/habit-aware daily briefing and evening summary content; current morning/evening prompts are simple reminders only.
-- Extend focus sessions with break cycles, custom durations and a durable timer UI; add habit streak rules.
-- Add priority/grouping/deduplication and smart frequency limits.
-- Implement remote push with test-only credentials/project first; no production secrets or deployment during this phase.
-- Implement location and travel handling with explicit permission and privacy review.
-- Test cold start, app restart, device reboot, account switch, sign-out, timezone/DST change, offline scheduling, permission denial, quiet hours, Android 13+ permission UX, battery saver and low-memory behavior on a physical Android device.
+1. **Task lifecycle:** add recurring due dates and automated unfinished-task follow-ups; add focused tests for grouped reminder replacement, partial native scheduling failure and cancellation recovery.
+2. **Habit intelligence:** suppress same-day alerts after check-in without losing future selected-day repeats; add next-eligible-day, missed-check-in and streak rules.
+3. **Routine lifecycle:** add routine editing, per-step progress tracking and safe rescheduling when steps or durations change.
+4. **Calendar durability:** reconcile per-member event changes and cancellations across refresh, offline periods and account changes; cover all-day and timezone/DST cases.
+5. **Briefings and history:** make morning/evening messages reflect current tasks and habits; add missed/delayed state and recoverable background delivery status.
+6. **Focus and alert quality:** add configurable break cycles and a durable timer UI; implement priority, grouping, deduplication and smart frequency limits.
+7. **Connected/context alerts:** implement remote shared-space push and location/travel-aware reminders after test-only infrastructure and privacy review; no production credentials or deployment during this phase.
+8. **Android verification:** test cold start, app restart, device reboot, account switch, sign-out, timezone/DST change, offline scheduling, permission denial, quiet hours, Android 13+ permission UX, battery saver and low-memory behavior on a physical Android device.
+
 
 ## 6. Home-screen widgets dependency
 
