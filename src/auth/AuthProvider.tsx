@@ -13,8 +13,12 @@ type AuthContextValue = {
 };
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function acceptAuthUrl(url: string, setRecovery: (value: boolean) => void) {
-  if (!supabase) return;
+async function acceptAuthUrl(
+  url: string,
+  setRecovery: (value: boolean) => void,
+  shouldContinue: () => boolean,
+) {
+  if (!supabase || !shouldContinue()) return;
   try {
     const parsed = new URL(url);
     const query = new URLSearchParams(parsed.search);
@@ -22,18 +26,21 @@ async function acceptAuthUrl(url: string, setRecovery: (value: boolean) => void)
     const accessToken = hash.get("access_token") ?? query.get("access_token");
     const refreshToken = hash.get("refresh_token") ?? query.get("refresh_token");
     const code = query.get("code");
-    const type = hash.get("type") ?? query.get("type");
-    if (type === "recovery") setRecovery(true);
+    const isRecovery = (hash.get("type") ?? query.get("type")) === "recovery";
     // Supabase PKCE links return a one-time code; implicit-flow links return tokens.
+    // Do not enter recovery mode until Supabase has accepted the credentials.
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(code);
       if (error) throw error;
     } else if (accessToken && refreshToken) {
       const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
       if (error) throw error;
+    } else {
+      return;
     }
+    if (isRecovery && shouldContinue()) setRecovery(true);
   } catch {
-    // Ignore unrelated or malformed deep links.
+    // Ignore unrelated, expired, or malformed deep links.
   }
 }
 
