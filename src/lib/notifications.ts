@@ -471,11 +471,6 @@ export async function scheduleReminder(userId: string, draft: ReminderDraft) {
   const staleSnoozes = existing
     ? state.reminders.filter(item => item.parentReminderId === existing.id)
     : [];
-  for (const snoozed of staleSnoozes) {
-    if (snoozed.notificationId) {
-      await Notifications.cancelScheduledNotificationAsync(snoozed.notificationId).catch(() => undefined);
-    }
-  }
   state.reminders = [
     reminder,
     ...state.reminders.filter(item =>
@@ -490,6 +485,11 @@ export async function scheduleReminder(userId: string, draft: ReminderDraft) {
   }
   if (existing?.notificationId && existing.notificationId !== notificationId) {
     await Notifications.cancelScheduledNotificationAsync(existing.notificationId).catch(() => undefined);
+  }
+  for (const snoozed of staleSnoozes) {
+    if (snoozed.notificationId) {
+      await Notifications.cancelScheduledNotificationAsync(snoozed.notificationId).catch(() => undefined);
+    }
   }
   return reminder;
   });
