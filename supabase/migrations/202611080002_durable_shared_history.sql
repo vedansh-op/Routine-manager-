@@ -53,31 +53,31 @@ revoke all on public.shared_archive_activities from anon, authenticated;
 grant select on public.shared_archives, public.shared_archive_participants,
   public.shared_archive_activities to authenticated;
 
+create or replace function public.is_shared_archive_participant(p_archive_id uuid)
+returns boolean language sql stable security definer set search_path = ''
+as $
+  select exists (
+    select 1 from public.shared_archive_participants p
+    where p.archive_id=p_archive_id and p.user_id=(select auth.uid())
+  );
+$;
+revoke all on function public.is_shared_archive_participant(uuid) from public;
+grant execute on function public.is_shared_archive_participant(uuid) to authenticated;
+
 drop policy if exists "Archive participants can read their shared archive" on public.shared_archives;
 create policy "Archive participants can read their shared archive"
   on public.shared_archives for select to authenticated
-  using (exists (
-    select 1 from public.shared_archive_participants p
-    where p.archive_id = shared_archives.id and p.user_id = (select auth.uid())
-  ));
+  using (public.is_shared_archive_participant(id));
 
 drop policy if exists "Archive participants can read archive membership" on public.shared_archive_participants;
 create policy "Archive participants can read archive membership"
   on public.shared_archive_participants for select to authenticated
-  using (exists (
-    select 1 from public.shared_archive_participants mine
-    where mine.archive_id = shared_archive_participants.archive_id
-      and mine.user_id = (select auth.uid())
-  ));
+  using (public.is_shared_archive_participant(archive_id));
 
 drop policy if exists "Archive participants can read shared history" on public.shared_archive_activities;
 create policy "Archive participants can read shared history"
   on public.shared_archive_activities for select to authenticated
-  using (exists (
-    select 1 from public.shared_archive_participants p
-    where p.archive_id = shared_archive_activities.archive_id
-      and p.user_id = (select auth.uid())
-  ));
+  using (public.is_shared_archive_participant(archive_id));
 
 -- Ensure every shared space has a detached archive container.
 insert into public.shared_archives(source_space_id)
@@ -98,6 +98,7 @@ begin
   return new;
 end;
 $;
+revoke all on function public.create_shared_archive_for_space() from public;
 
 drop trigger if exists create_shared_archive_after_space_insert on public.spaces;
 create trigger create_shared_archive_after_space_insert
