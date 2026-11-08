@@ -75,7 +75,7 @@ export function initializeUserKeyForFreshInstall(userId: string): Promise<void> 
 
 const userKeyLoads = new Map<string, Promise<Uint8Array>>();
 
-/** Coalesces parallel first-run reads so the task store and photo vault cannot create different keys. */
+/** Coalesces parallel reads of an already initialized key; reads never create key material. */
 function getUserKey(userId: string): Promise<Uint8Array> {
   const active = userKeyLoads.get(userId);
   if (active) return active;
