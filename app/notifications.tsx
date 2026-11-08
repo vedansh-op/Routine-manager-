@@ -105,7 +105,7 @@ export default function NotificationsScreen() {
     setBusy(true);
     try {
       const next = await updateNotificationSettings(user.id, patch);
-      setSettings(next);
+      setSettings(next.settings);
       setReminders(next.reminders);
     } catch (error) {
       Alert.alert("Couldn't update settings", error instanceof Error ? error.message : "Please try again.");
