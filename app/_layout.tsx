@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { AppState, ActivityIndicator, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { AppStoreProvider } from "@/store/AppStore";
+import { AppStoreProvider, useAppStore } from "@/store/AppStore";
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
 import { ensureDeviceCryptoKey } from "@/lib/deviceCrypto";
 import * as Notifications from "expo-notifications";
-import { completeReminder, configureNotificationResponseActions, initializeNotificationChannels, NOTIFICATION_CATEGORIES, NotificationCategory, recordNotificationHistory, snoozeReminder } from "@/lib/notifications";
+import { completeReminder, configureNotificationResponseActions, initializeNotificationChannels, NOTIFICATION_CATEGORIES, NotificationCategory, recordNotificationHistory, reconcileScheduledNotifications, snoozeReminder } from "@/lib/notifications";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -20,6 +20,7 @@ Notifications.setNotificationHandler({
 
 function SessionGate() {
   const { configured, loading, session, recovery, user } = useAuth();
+  const { canEdit } = useAppStore();
   const segments = useSegments();
   const router = useRouter();
   const route = segments[0];
@@ -27,6 +28,15 @@ function SessionGate() {
   const inMfa = route === "mfa";
   const inVerifyEmail = route === "verify-email";
   const emailVerified = Boolean(session?.user.email_confirmed_at);
+  useEffect(() => {
+    if (!user?.id) {
+      void reconcileScheduledNotifications(null).catch(() => undefined);
+      return;
+    }
+    if (!canEdit) return;
+    void reconcileScheduledNotifications(user.id).catch(() => undefined);
+  }, [user?.id, canEdit]);
+
   const handledResponses = useRef(new Set<string>());
 
   useEffect(() => {
