@@ -6,7 +6,8 @@
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:recovery": "node --test scripts/key-recovery-state.test.cjs"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
