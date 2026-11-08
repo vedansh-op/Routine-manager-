@@ -20,7 +20,6 @@ type Store = {
   addHabit: (title: string) => void;
   toggleHabitToday: (id: string) => void;
 };
-const LEGACY_KEY = "one-os-v1";
 const keyForUser = (userId: string) => "one-os-v2:" + userId;
 const migratedKey = (userId: string) => "one-os-v2-migrated:" + userId;
 const StoreContext = createContext<Store | null>(null);
