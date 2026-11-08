@@ -4,6 +4,7 @@ import * as SecureStore from "expo-secure-store";
 import { x25519 } from "@noble/curves/ed25519.js";
 import { supabase } from "@/lib/supabase";
 
+const ACCOUNT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LEGACY_DEVICE_ID_PREFIX = "one-os-snap-device:";
 const LEGACY_DEVICE_SECRET_PREFIX = "one-os-snap-x25519:";
 
@@ -24,7 +25,7 @@ export type LegacyDeviceKeyInspection =
  * cannot accidentally place key material in UI state or logs.
  */
 export async function inspectLegacyDeviceKey(userId: string): Promise<LegacyDeviceKeyInspection> {
-  if (!userId || userId.length > 128) {
+  if (!ACCOUNT_ID_PATTERN.test(userId)) {
     throw new Error("A valid account ID is required to inspect local key storage.");
   }
 
@@ -96,7 +97,7 @@ export type LocalEncryptedDataInventory = {
   appStoreRecord: "encrypted" | "legacy-plaintext" | "absent" | "unknown";
   legacyUnscopedAppStoreRecord: "present" | "absent" | "unknown";
   snapIndex: "encrypted" | "legacy-plaintext" | "absent" | "unknown";
-  snapVault: "contains-files" | "empty-visible" | "not-visible" | "unknown";
+  snapVault: "contains-entries" | "empty-visible" | "not-visible" | "unknown";
   snapVaultFileCount: number | null;
 };
 
@@ -149,7 +150,7 @@ export async function inspectLocalEncryptedData(userId: string): Promise<LocalEn
       const entries = vault.list();
       const files = entries.filter(entry => entry instanceof File);
       result.snapVaultFileCount = files.length;
-      result.snapVault = files.length > 0 ? "contains-files" : "empty-visible";
+      result.snapVault = entries.length > 0 ? "contains-entries" : "empty-visible";
     }
 
     result.status = "complete";
