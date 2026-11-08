@@ -231,8 +231,8 @@ The next implementation step is to add tests and a reviewed bootstrap decision. 
 - Whether the scoped AppStore record exists and appears encrypted (`enc1:`) or legacy plaintext.
 - Whether the older unscoped AppStore key exists (it is reported separately because its ownership is not established by the key name).
 - Whether the Snap index exists and appears encrypted or legacy plaintext.
-- Whether the account's Snap vault directory is visible and, if visible, how many direct file entries it contains.
+- Whether the account's Snap vault directory is visible and, if visible, whether the directory contains any entries (and the count of direct files). Unexpected subdirectories are treated as non-empty rather than being mistaken for an empty vault.
 
-It never reads file contents, decrypts data, or mutates storage. An inaccessible/missing vault directory is reported as `not-visible`, not as empty. Any inspection exception leaves the overall result `unknown`; callers must not use unknown or not-visible to authorize new key creation. The file count is only a presence signal, not proof that files are valid ciphertext or belong to this user.
+It never reads file contents, decrypts data, or mutates storage. An inaccessible/missing vault directory is reported as `not-visible`, not as empty. Both inspectors validate the account ID as a UUID before using it in SecureStore, AsyncStorage, or filesystem paths. Any inspection exception leaves the overall result `unknown`; callers must not use unknown or not-visible to authorize new key creation. The entry/file count is only a presence signal, not proof that files are valid ciphertext or belong to this user.
 
 The function is not yet called by app startup, and `createUserKey()` remains unchanged. This is intentional until automated tests can exercise the dangerous states without touching real user data.
