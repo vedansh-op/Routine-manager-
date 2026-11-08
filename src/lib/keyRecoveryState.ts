@@ -16,6 +16,8 @@ export function classifyRecoveryBootstrapState(
   inventory: LocalEncryptedDataInventory,
 ): RecoveryBootstrapState {
   if (inventory.status !== "complete") return "needs-review";
+  if (device.status !== "absent" && device.status !== "valid") return "needs-review";
+  if (device.status === "valid" && device.revoked) return "needs-review";
 
   const hasData =
     inventory.dataKey !== "missing" ||
