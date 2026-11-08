@@ -31,8 +31,8 @@ The team has a coherent source inventory, ownership model, threat model, archive
 ## 2. CI evidence
 
 The latest verified feature-branch commit passed the TypeScript validation workflow:
-- Commit: bf381bf71a99fa425bb5abddf3d44c83b5657566
-- Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42532866305
+- Commit: 47eeade84cfb7d045dc096471568dfd1ffb9fc10
+- Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42533644210
 - Verified successful job steps: dependency installation, TypeScript validation, recovery-state tests, notification-state tests, Snap crypto tests, and secure session storage tests.
 - Recovery-state suite: 27 tests passed.
 - Notification-state suite: 6 tests passed.
