@@ -84,6 +84,26 @@ insert into public.shared_archives(source_space_id)
 select s.id from public.spaces s where s.space_type = 'shared'
 on conflict (source_space_id) do nothing;
 
+-- New shared spaces receive an archive container before the owner membership
+-- row is inserted by create_shared_space().
+create or replace function public.create_shared_archive_for_space()
+returns trigger language plpgsql security definer set search_path = ''
+as $
+begin
+  if new.space_type = 'shared' then
+    insert into public.shared_archives(source_space_id)
+    values (new.id)
+    on conflict (source_space_id) do nothing;
+  end if;
+  return new;
+end;
+$;
+
+drop trigger if exists create_shared_archive_after_space_insert on public.spaces;
+create trigger create_shared_archive_after_space_insert
+  after insert on public.spaces
+  for each row execute function public.create_shared_archive_for_space();
+
 -- Record both participant identities in stable slots. A user UUID is retained
 -- as a non-FK audit identifier; user_id is the live authorization link.
 insert into public.shared_archive_participants(
