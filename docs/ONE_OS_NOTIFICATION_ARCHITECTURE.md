@@ -84,7 +84,7 @@ Location reminders require a dedicated privacy review, foreground/background per
 - One-time, daily and weekly local reminders are schedulable.
 - Quiet hours shift one-time reminders to the next quiet-hours end; repeating reminders are rejected when their selected time falls in quiet hours.
 - Category and master switches cancel/reschedule pending local reminders.
-- Notification actions support snooze 10 minutes, mark reminder done, and open the relevant screen. Snoozing a recurring reminder creates a separate one-time alert and preserves its recurring schedule.
+- Notification actions support snooze 10 minutes, mark done, and open the relevant screen. Snoozes are parent-linked so deleting/completing a task or removing a habit snooze cancels dependent alerts. Task Done completes the task and cancels all its lead-time alerts; habit Done checks in today while preserving future selected-day repeats.
 - Task rows can schedule multiple deadline alerts (1 hour, 30 minutes, 15 minutes, 5 minutes and/or at the due time); selections are idempotently linked by task ID, and completing a task cancels every linked alert.
 - Habits can schedule local check-ins every day or on individually selected weekdays; reminders use stable habit source keys and can be changed or removed.
 - Upcoming shared calendar events are reconciled into local alerts at a user-configurable advance time (5, 10, 15, 30, 60 or 120 minutes), for events within the next 30 days (up to 40 events per sync). Stable source keys prevent duplicates on refresh.
