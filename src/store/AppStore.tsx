@@ -28,7 +28,7 @@ type Store = {
   storageError: string | null;
   canEdit: boolean;
   addTask: (title: string) => void;
-  toggleTask: (id: string) => Promise<void>;
+  toggleTask: (id: string) => Promise<boolean>;
   setTaskReminder: (id: string, reminderIds: string[], dueDate: string) => void;
   addHabit: (title: string) => void;
   addRoutine: (title: string, steps: RoutineStep[]) => void;
@@ -149,9 +149,9 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     if (value) setTasks(old => [{ id: uid(), title: value, completed: false, createdAt: new Date().toISOString() }, ...old]);
   }, [storageUnlocked, ready, activeUserId, userId]);
   const toggleTask = useCallback(async (id: string) => {
-    if (!storageUnlocked || !ready || activeUserId !== userId) return;
+    if (!storageUnlocked || !ready || activeUserId !== userId) return false;
     const task = tasks.find(item => item.id === id);
-    if (!task) return;
+    if (!task) return false;
     const completing = !task.completed;
     const reminderIds = task.reminderIds ?? (task.reminderId ? [task.reminderId] : []);
     if (completing && reminderIds.length > 0 && userId) {
@@ -159,7 +159,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         for (const reminderId of reminderIds) await cancelReminder(userId, reminderId);
       } catch (error) {
         setStorageError(error instanceof Error ? "Task reminder could not be cancelled: " + error.message : "Task reminder could not be cancelled.");
-        return;
+        return false;
       }
     }
     setTasks(old => old.map(item => item.id === id
@@ -171,6 +171,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
           dueDate: completing ? undefined : item.dueDate,
         }
       : item));
+    return true;
   }, [tasks, storageUnlocked, ready, activeUserId, userId]);
   const setTaskReminder = useCallback((id: string, reminderIds: string[], dueDate: string) => {
     if (!storageUnlocked || !ready || activeUserId !== userId) return;
