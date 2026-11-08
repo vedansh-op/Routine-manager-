@@ -55,7 +55,7 @@ function SessionGate() {
         .select("space_id").eq("user_id", userId).limit(1).maybeSingle();
       if (!cancelled && data?.space_id) {
         await client.rpc("touch_my_presence");
-        await ensureDeviceCryptoKey(userId).catch(() => undefined);
+        if (!cancelled) await ensureDeviceCryptoKey(userId).catch(() => undefined);
       }
     };
     void heartbeat();
