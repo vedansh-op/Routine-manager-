@@ -176,7 +176,7 @@ const s = StyleSheet.create({
   secondary:{backgroundColor:"#29243a",padding:16,borderRadius:13,alignItems:"center",marginTop:12},secondaryText:{color:"#d8d1ff",fontWeight:"800"},
   input:{backgroundColor:"#101216",borderWidth:1,borderColor:"#3b3e4a",borderRadius:12,padding:15,color:"#f4f2ff",marginTop:16,fontSize:16,letterSpacing:2},
   disabled:{opacity:0.55},codePanel:{backgroundColor:"#101216",borderRadius:14,padding:16,marginTop:18},
-  label:{color:"#9699a5",fontSize:10,letterSpacing:1,fontWeight:"700"},code:{color:"#c7bfff",fontSize:30,fontWeight:"800",letterSpacing:5,marginTop:10},
+  label:{color:"#9699a5",fontSize:10,letterSpacing:1,fontWeight:"700"},code:{color:"#c7bfff",fontSize:18,fontWeight:"800",letterSpacing:1,marginTop:10},
   spaceName:{color:"#f4f2ff",fontSize:22,fontWeight:"700",marginTop:12},meta:{color:"#9699a5",fontSize:10,marginTop:22},id:{color:"#c7bfff",fontSize:11,marginTop:6},
   foot:{color:"#666c79",fontSize:11,lineHeight:18,textAlign:"center",marginTop:12}
 });
