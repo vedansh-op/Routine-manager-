@@ -33,10 +33,15 @@ export async function saveLocalSnap(
   const directory = vaultDirectory(userId);
   directory.create({ idempotent: true, intermediates: true });
   const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "");
-  if (!safeId) throw new Error("Invalid local photo identifier.");
+  // Do not silently normalize IDs: two distinct delivery IDs must never map
+  // to the same on-device filename.
+  if (!safeId || safeId !== id) throw new Error("Invalid local photo identifier.");
+
+  // Resolve the account key and finish encryption before opening the target
+  // file. A missing/malformed key must never truncate an existing memory.
+  const encryptedAtRest = await encryptLocalBytes(userId, plaintext);
   const file = new File(directory, safeId + ".enc");
   file.create({ intermediates: true, overwrite: true });
-  const encryptedAtRest = await encryptLocalBytes(userId, plaintext);
   await file.write(encryptedAtRest);
 
   const record: LocalSnap = { id, deliveryId, fileUri: file.uri, mimeType, capturedAt, direction };
