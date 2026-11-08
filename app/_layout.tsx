@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppState, ActivityIndicator, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -6,9 +6,20 @@ import { AppStoreProvider } from "@/store/AppStore";
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
 import { ensureDeviceCryptoKey } from "@/lib/deviceCrypto";
+import * as Notifications from "expo-notifications";
+import { completeReminder, configureNotificationResponseActions, initializeNotificationChannels, snoozeReminder } from "@/lib/notifications";
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 function SessionGate() {
-  const { configured, loading, session, recovery } = useAuth();
+  const { configured, loading, session, recovery, user } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const route = segments[0];
@@ -16,6 +27,60 @@ function SessionGate() {
   const inMfa = route === "mfa";
   const inVerifyEmail = route === "verify-email";
   const emailVerified = Boolean(session?.user.email_confirmed_at);
+  const handledResponses = useRef(new Set<string>());
+
+  useEffect(() => {
+    void initializeNotificationChannels();
+    configureNotificationResponseActions();
+
+    const handleResponse = async (response: Notifications.NotificationResponse) => {
+      const requestId = response.notification.request.identifier;
+      const responseKey = requestId + ":" + response.actionIdentifier;
+      if (handledResponses.current.has(responseKey)) return;
+      handledResponses.current.add(responseKey);
+
+      const data = response.notification.request.content.data as {
+        userId?: unknown;
+        reminderId?: unknown;
+        route?: unknown;
+      };
+      if (!user?.id || data.userId !== user.id || typeof data.reminderId !== "string") return;
+
+      try {
+        if (response.actionIdentifier === "SNOOZE_10") {
+          await snoozeReminder(user.id, data.reminderId, 10);
+          return;
+        }
+        if (response.actionIdentifier === "DONE") {
+          await completeReminder(user.id, data.reminderId);
+          return;
+        }
+        if (
+          response.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER ||
+          response.actionIdentifier === "OPEN"
+        ) {
+          const allowedRoutes = ["/", "/tasks", "/habits", "/calendar", "/notifications", "/shared"];
+          const target = typeof data.route === "string" && allowedRoutes.includes(data.route)
+            ? data.route
+            : "/notifications";
+          router.push(target as never);
+        }
+      } catch {
+        // A notification action must never crash session routing. The reminder
+        // remains in encrypted storage and can be managed from Notifications.
+      }
+    };
+
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      void handleResponse(response);
+    });
+    void Notifications.getLastNotificationResponseAsync()
+      .then(response => { if (response) void handleResponse(response); })
+      .catch(() => undefined);
+
+    return () => subscription.remove();
+  }, [user?.id, router]);
+
   const [assuranceReady, setAssuranceReady] = useState(false);
   const [aal2, setAal2] = useState(false);
 
