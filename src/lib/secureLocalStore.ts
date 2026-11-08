@@ -28,18 +28,36 @@ function decodeUtf8(value: Uint8Array): string {
   return decodeURIComponent(encoded);
 }
 
-async function createUserKey(userId: string): Promise<Uint8Array> {
-  const alias = KEY_PREFIX + userId;
-  let keyHex = await SecureStore.getItemAsync(alias);
-  if (!keyHex) {
-    keyHex = toHex(getRandomBytes(32));
-    await SecureStore.setItemAsync(alias, keyHex, {
-      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
-    });
+async function readUserKey(userId: string): Promise<Uint8Array> {
+  const keyHex = await SecureStore.getItemAsync(KEY_PREFIX + userId);
+  if (keyHex === null) {
+    throw new Error("The local encryption key is missing. Existing encrypted data is preserved; recovery is required.");
   }
   const key = fromHex(keyHex);
   if (key.length !== 32) throw new Error("The local encryption key is invalid.");
   return key;
+}
+
+/**
+ * Creates a data key only when an explicit, read-only recovery bootstrap has
+ * established that no existing encrypted local data depends on a missing key.
+ */
+export async function initializeUserKeyForFreshInstall(userId: string): Promise<void> {
+  const alias = KEY_PREFIX + userId;
+  const existing = await SecureStore.getItemAsync(alias);
+  if (existing !== null) {
+    const key = fromHex(existing);
+    if (key.length !== 32) throw new Error("The local encryption key is invalid.");
+    return;
+  }
+  const generated = toHex(getRandomBytes(32));
+  await SecureStore.setItemAsync(alias, generated, {
+    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+  });
+  const confirmed = await SecureStore.getItemAsync(alias);
+  if (confirmed !== generated) {
+    throw new Error("The new local encryption key could not be verified.");
+  }
 }
 
 const userKeyLoads = new Map<string, Promise<Uint8Array>>();
@@ -48,7 +66,7 @@ const userKeyLoads = new Map<string, Promise<Uint8Array>>();
 function getUserKey(userId: string): Promise<Uint8Array> {
   const active = userKeyLoads.get(userId);
   if (active) return active;
-  const pending = createUserKey(userId).finally(() => {
+  const pending = readUserKey(userId).finally(() => {
     if (userKeyLoads.get(userId) === pending) userKeyLoads.delete(userId);
   });
   userKeyLoads.set(userId, pending);
