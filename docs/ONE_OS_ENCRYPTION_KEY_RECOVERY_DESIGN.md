@@ -214,4 +214,11 @@ F. Only after local storage passes tests, implement the recovery envelope creati
 - Restored data key authenticates the encrypted AppStore record and Snap vault index/file before success is shown.
 - Sign-out, account switching, app restart, and reinstall do not cross-contaminate key namespaces.
 
-Status: source call sites reviewed; no key-storage code has been changed yet. These checks are implementation gates, not claims of completed testing.
+Status: source call sites reviewed. A read-only legacy device-key inspector now exists in `src/lib/keyRecoveryRegistry.ts`; it validates local alias shape and compares the derived public key with the user's registered server row without returning or mutating key material. It does not yet inspect the local data key, encrypted task record, or Snap vault files, and it does not migrate or restore keys. These checks are implementation gates, not claims of completed testing.
+
+
+## 10. Read-only inspection foundation
+
+`src/lib/keyRecoveryRegistry.ts` adds `inspectLegacyDeviceKey(userId)`. Its result is a small status union: absent, partial, malformed, server-unavailable, server-error, server-mismatch, or valid (with revoked state). It does not return identifiers or key bytes, write SecureStore, call key registration, or alter database rows. A valid result means only that the local legacy private key derives the public key stored for that exact account/device row; it does not prove data-key or vault recoverability.
+
+The next implementation step is a read-only local-data inventory for the encrypted AppStore key and Snap vault index/files. No migration or automatic key generation should be wired into app startup until that inventory and the bootstrap decision are reviewed.
