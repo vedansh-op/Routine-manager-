@@ -17,7 +17,7 @@ const leadOptions = [
 
 export default function Tasks() {
   const { user } = useAuth();
-  const { tasks, addTask, toggleTask, setTaskReminder, canEdit, storageError } = useAppStore();
+  const { tasks, addTask, toggleTask, removeTask, setTaskReminder, canEdit, storageError } = useAppStore();
   const [title, setTitle] = useState("");
   const [schedulingId, setSchedulingId] = useState<string | null>(null);
   const [selectedLeadTimes, setSelectedLeadTimes] = useState<number[]>([0]);
@@ -109,6 +109,27 @@ export default function Tasks() {
     });
   }
 
+  function confirmDeleteTask(taskId: string) {
+    const task = tasks.find(item => item.id === taskId);
+    if (!task) return;
+    Alert.alert(
+      "Delete this task?",
+      "“" + task.title + "” and all of its scheduled alerts will be removed from this device.",
+      [
+        { text: "Keep task", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void removeTask(taskId).catch(error => {
+              Alert.alert("Couldn't delete task", error instanceof Error ? error.message : "Its reminders could not be safely cancelled.");
+            });
+          },
+        },
+      ],
+    );
+  }
+
   function chooseReminderDate(taskId: string) {
     const task = tasks.find(item => item.id === taskId);
     const initial = task?.dueDate ? new Date(task.dueDate) : new Date(Date.now() + 60 * 60 * 1000);
@@ -154,13 +175,18 @@ export default function Tasks() {
             {task.dueDate && !task.completed ? <Text style={s.due}>Due · {new Date(task.dueDate).toLocaleString()} · {reminderCount} alert{reminderCount === 1 ? "" : "s"}</Text> : null}
           </View>
         </Pressable>
-        {!task.completed ? <Pressable
-          disabled={!canEdit || Boolean(schedulingId)}
-          style={[s.remind, (!canEdit || Boolean(schedulingId)) && s.disabled]}
-          onPress={() => chooseReminderDate(task.id)}
-        >
-          <Text style={s.remindText}>{schedulingId === task.id ? "…" : task.dueDate ? "Change alerts" : "Set due time"}</Text>
-        </Pressable> : null}
+        {!task.completed ? <View style={s.rowActions}>
+          <Pressable
+            disabled={!canEdit || Boolean(schedulingId)}
+            style={[s.remind, (!canEdit || Boolean(schedulingId)) && s.disabled]}
+            onPress={() => chooseReminderDate(task.id)}
+          >
+            <Text style={s.remindText}>{schedulingId === task.id ? "…" : task.dueDate ? "Change alerts" : "Set due time"}</Text>
+          </Pressable>
+          <Pressable disabled={!canEdit || Boolean(schedulingId)} style={s.delete} onPress={() => confirmDeleteTask(task.id)}>
+            <Text style={s.deleteText}>Delete</Text>
+          </Pressable>
+        </View> : <Pressable disabled={!canEdit} style={s.delete} onPress={() => confirmDeleteTask(task.id)}><Text style={s.deleteText}>Delete</Text></Pressable>}
       </View>;
     })}
     <Link href="/notifications" style={s.settingsLink}>Notification settings →</Link>
@@ -181,6 +207,6 @@ const s = StyleSheet.create({
   taskToggle:{flex:1,flexDirection:"row",gap:12,alignItems:"center"},check:{color:"#a99cff",fontSize:18},
   task:{color:"#eee",fontSize:14,flex:1},done:{textDecorationLine:"line-through",color:"#777d8c"},
   due:{color:"#9f98d8",fontSize:9,marginTop:5},remind:{backgroundColor:"#302b47",borderRadius:9,paddingHorizontal:10,paddingVertical:9},
-  remindText:{color:"#d4ceff",fontSize:10,fontWeight:"800"},disabled:{opacity:0.45},
+  remindText:{color:"#d4ceff",fontSize:10,fontWeight:"800"},rowActions:{gap:7,alignItems:"flex-end"},delete:{borderWidth:1,borderColor:"#62404a",borderRadius:9,paddingHorizontal:10,paddingVertical:8},deleteText:{color:"#ff9eae",fontSize:9,fontWeight:"800"},disabled:{opacity:0.45},
   settingsLink:{color:"#c7bfff",marginTop:22,fontSize:12,fontWeight:"700"},
 });
