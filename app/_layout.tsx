@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { AppState, ActivityIndicator, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { AppStoreProvider, useAppStore } from "@/store/AppStore";
+import { AppStoreProvider, todayKey, useAppStore } from "@/store/AppStore";
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
 import { ensureDeviceCryptoKey } from "@/lib/deviceCrypto";
 import * as Notifications from "expo-notifications";
-import { completeReminder, configureNotificationResponseActions, initializeNotificationChannels, NOTIFICATION_CATEGORIES, NotificationCategory, recordNotificationHistory, reconcileScheduledNotifications, snoozeReminder } from "@/lib/notifications";
+import { completeReminder, configureNotificationResponseActions, initializeNotificationChannels, NOTIFICATION_CATEGORIES, NotificationCategory, cancelSnoozesForReminder, recordNotificationHistory, reconcileScheduledNotifications, snoozeReminder } from "@/lib/notifications";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -20,7 +20,7 @@ Notifications.setNotificationHandler({
 
 function SessionGate() {
   const { configured, loading, session, recovery, user } = useAuth();
-  const { canEdit } = useAppStore();
+  const { canEdit, tasks, habits, completions, toggleTask, toggleHabitToday } = useAppStore();
   const segments = useSegments();
   const router = useRouter();
   const route = segments[0];
@@ -54,15 +54,21 @@ function SessionGate() {
       const requestId = response.notification.request.identifier;
       const responseKey = requestId + ":" + response.actionIdentifier;
       if (handledResponses.current.has(responseKey)) return;
-      handledResponses.current.add(responseKey);
 
       const data = response.notification.request.content.data as {
         userId?: unknown;
         reminderId?: unknown;
         route?: unknown;
         category?: unknown;
+        sourceKey?: unknown;
+        repeatKind?: unknown;
       };
-      if (!user?.id || data.userId !== user.id || typeof data.reminderId !== "string") return;
+      if (!user?.id || !canEdit) return;
+      if (data.userId !== user.id || typeof data.reminderId !== "string") {
+        handledResponses.current.add(responseKey);
+        return;
+      }
+      handledResponses.current.add(responseKey);
       const category: NotificationCategory = NOTIFICATION_CATEGORIES.includes(data.category as NotificationCategory)
         ? data.category as NotificationCategory
         : "system";
@@ -80,7 +86,29 @@ function SessionGate() {
           return;
         }
         if (response.actionIdentifier === "DONE") {
-          await completeReminder(user.id, data.reminderId);
+          if (category === "task" && typeof data.sourceKey === "string") {
+            const match = data.sourceKey.match(/^task:([^:]+):lead:/);
+            const task = match ? tasks.find(item => item.id === match[1]) : undefined;
+            if (task && !task.completed) {
+              await toggleTask(task.id);
+            } else {
+              await completeReminder(user.id, data.reminderId);
+            }
+          } else if (category === "habit" && typeof data.sourceKey === "string") {
+            const match = data.sourceKey.match(/^habit:([^:]+):/);
+            const habit = match ? habits.find(item => item.id === match[1]) : undefined;
+            if (habit) {
+              const completionKey = habit.id + ":" + todayKey();
+              if (!completions.includes(completionKey)) toggleHabitToday(habit.id);
+              const reminderIds = habit.reminderIds ?? (habit.reminderId ? [habit.reminderId] : []);
+              for (const reminderId of reminderIds) await cancelSnoozesForReminder(user.id, reminderId);
+              if (data.repeatKind === "once") await completeReminder(user.id, data.reminderId);
+            } else {
+              await completeReminder(user.id, data.reminderId);
+            }
+          } else {
+            await completeReminder(user.id, data.reminderId);
+          }
           await recordNotificationHistory(user.id, { ...historyEntry, event: "completed" });
           return;
         }
@@ -130,7 +158,7 @@ function SessionGate() {
       receivedSubscription.remove();
       subscription.remove();
     };
-  }, [user?.id, router]);
+  }, [user?.id, canEdit, router, tasks, habits, completions, toggleTask, toggleHabitToday]);
 
   const [assuranceReady, setAssuranceReady] = useState(false);
   const [aal2, setAal2] = useState(false);
