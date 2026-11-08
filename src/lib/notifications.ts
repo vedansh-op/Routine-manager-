@@ -209,6 +209,21 @@ function normalizeState(value: unknown): NotificationState {
   };
 }
 
+let notificationQueue: Promise<void> = Promise.resolve();
+
+async function withNotificationQueue<T>(work: () => Promise<T>): Promise<T> {
+  const previous = notificationQueue;
+  let release!: () => void;
+  const current = new Promise<void>(resolve => { release = resolve; });
+  notificationQueue = current;
+  await previous.catch(() => undefined);
+  try {
+    return await work();
+  } finally {
+    release();
+  }
+}
+
 async function loadState(userId: string): Promise<NotificationState> {
   const stored = await getEncryptedItem(storageKey(userId), userId);
   if (!stored) return defaultState();
@@ -265,6 +280,7 @@ export async function getNotificationPermission() {
 }
 
 export async function reconcileScheduledNotifications(userId: string | null) {
+  return withNotificationQueue(async () => {
   const pending = await Notifications.getAllScheduledNotificationsAsync();
   const owned = new Map<string, Notifications.NotificationRequest>();
   for (const request of pending) {
@@ -335,12 +351,15 @@ export async function reconcileScheduledNotifications(userId: string | null) {
     await Notifications.cancelScheduledNotificationAsync(request.identifier).catch(() => undefined);
   }
   if (changed) await saveState(userId, state);
+  });
 }
 
 export async function getNotificationState(userId: string) {
+  return withNotificationQueue(async () => {
   const state = await loadState(userId);
   await ensureNotificationChannels(state.settings);
   return state;
+  });
 }
 
 function buildTrigger(repeat: RepeatRule, settings: NotificationSettings, category: NotificationCategory) {
@@ -409,6 +428,7 @@ async function scheduleNative(userId: string, reminder: Reminder, settings: Noti
 }
 
 export async function scheduleReminder(userId: string, draft: ReminderDraft) {
+  return withNotificationQueue(async () => {
   const title = draft.title.trim();
   if (!title) throw new Error("Enter a reminder title.");
   if (title.length > 90) throw new Error("Keep reminder titles under 90 characters.");
@@ -451,18 +471,22 @@ export async function scheduleReminder(userId: string, draft: ReminderDraft) {
     await Notifications.cancelScheduledNotificationAsync(existing.notificationId).catch(() => undefined);
   }
   return reminder;
+  });
 }
 
 export async function cancelReminder(userId: string, reminderId: string) {
+  return withNotificationQueue(async () => {
   const state = await loadState(userId);
   const reminder = state.reminders.find(item => item.id === reminderId);
   if (!reminder) return;
   if (reminder.notificationId) await Notifications.cancelScheduledNotificationAsync(reminder.notificationId);
   state.reminders = state.reminders.filter(item => item.id !== reminderId);
   await saveState(userId, state);
+  });
 }
 
 export async function completeReminder(userId: string, reminderId: string) {
+  return withNotificationQueue(async () => {
   const state = await loadState(userId);
   const reminder = state.reminders.find(item => item.id === reminderId);
   if (!reminder) return;
@@ -471,9 +495,11 @@ export async function completeReminder(userId: string, reminderId: string) {
   reminder.completed = true;
   reminder.enabled = false;
   await saveState(userId, state);
+  });
 }
 
 export async function snoozeReminder(userId: string, reminderId: string, minutes = 10) {
+  return withNotificationQueue(async () => {
   if (!Number.isInteger(minutes) || minutes < 1 || minutes > 240) throw new Error("Snooze duration is invalid.");
   const state = await loadState(userId);
   const reminder = state.reminders.find(item => item.id === reminderId);
@@ -507,11 +533,13 @@ export async function snoozeReminder(userId: string, reminderId: string, minutes
     throw error;
   }
   if (isOneTime && oldId) await Notifications.cancelScheduledNotificationAsync(oldId).catch(() => undefined);
+  });
 }
 
 export async function updateNotificationSettings(
   userId: string,
   patch: Partial<Omit<NotificationSettings, "categoryEnabled" | "quietHours">> & {
+  return withNotificationQueue(async () => {
     categoryEnabled?: Partial<Record<NotificationCategory, boolean>>;
     quietHours?: Partial<QuietHours>;
   },
@@ -545,11 +573,13 @@ export async function updateNotificationSettings(
   }
   await saveState(userId, state);
   return state;
+  });
 }
 
 export async function recordNotificationHistory(
   userId: string,
-  entry: Omit<NotificationHistoryEntry, "id" | "occurredAt"> & { occurredAt?: string },
+  entry: Omit<NotificationHistoryEntry, "id" | "occurredAt"> & {
+  return withNotificationQueue(async () => { occurredAt?: string },
 ) {
   const state = await loadState(userId);
   const id = makeId();
@@ -559,13 +589,16 @@ export async function recordNotificationHistory(
     occurredAt: entry.occurredAt ?? new Date().toISOString(),
   }, ...state.history].slice(0, 100);
   await saveState(userId, state);
+  });
 }
 
 export async function listEnabledReminderCategories(userId: string) {
+  return withNotificationQueue(async () => {
   const state = await loadState(userId);
   return NOTIFICATION_CATEGORIES.filter(category =>
     state.settings.enabled && state.settings.categoryEnabled[category],
   );
+  });
 }
 
 export function getNotificationCategoryLabel(category: NotificationCategory) {
