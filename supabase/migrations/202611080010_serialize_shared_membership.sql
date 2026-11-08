@@ -29,6 +29,15 @@ begin
     return new;
   end if;
 
+  if not exists (
+    select 1
+    from public.shared_archives a
+    where a.source_space_id = new.space_id
+      and a.ended_at is null
+  ) then
+    raise exception 'Shared connection is not active';
+  end if;
+
   perform pg_advisory_xact_lock(hashtextextended(new.space_id::text, 1));
 
   if exists (
