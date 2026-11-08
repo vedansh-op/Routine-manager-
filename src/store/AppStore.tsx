@@ -34,6 +34,7 @@ type Store = {
   addRoutine: (title: string, steps: RoutineStep[]) => void;
   setRoutineSchedule: (id: string, reminderIds: string[], startAt: string) => void;
   removeRoutine: (id: string) => Promise<void>;
+  completeRoutine: (id: string) => Promise<boolean>;
   toggleHabitToday: (id: string) => void;
   setHabitReminder: (id: string, reminderIds: string[] | null, reminderTime?: string, reminderDays?: number[]) => void;
 };
@@ -211,6 +212,30 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       ? { ...item, reminderIds, scheduledStartAt: startAt }
       : item));
   }, [storageUnlocked, ready, activeUserId, userId]);
+  const completeRoutine = useCallback(async (id: string) => {
+    if (!storageUnlocked || !ready || activeUserId !== userId || !userId) return false;
+    const routine = routines.find(item => item.id === id);
+    if (!routine) return false;
+    try {
+      const notificationState = await getNotificationState(userId);
+      const sourcePrefix = "routine:" + id + ":";
+      const linkedIds = new Set([
+        ...(routine.reminderIds ?? []),
+        ...notificationState.reminders
+          .filter(item => item.sourceKey?.startsWith(sourcePrefix))
+          .map(item => item.id),
+      ]);
+      for (const reminderId of linkedIds) await cancelReminder(userId, reminderId);
+      setRoutines(old => old.map(item => item.id === id
+        ? { ...item, reminderIds: undefined, scheduledStartAt: undefined }
+        : item));
+      return true;
+    } catch (error) {
+      setStorageError(error instanceof Error ? "Routine reminders could not be cancelled: " + error.message : "Routine reminders could not be cancelled.");
+      return false;
+    }
+  }, [routines, storageUnlocked, ready, activeUserId, userId]);
+
   const removeRoutine = useCallback(async (id: string) => {
     if (!storageUnlocked || !ready || activeUserId !== userId) return;
     const routine = routines.find(item => item.id === id);
@@ -239,7 +264,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   }, [storageUnlocked, ready, activeUserId, userId]);
 
   const canEdit = ready && storageUnlocked && activeUserId === userId;
-  const value = useMemo(() => ({ tasks, habits, routines, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday, setHabitReminder, addRoutine, setRoutineSchedule, removeRoutine }), [tasks, habits, routines, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday, setHabitReminder, addRoutine, setRoutineSchedule, removeRoutine]);
+  const value = useMemo(() => ({ tasks, habits, routines, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday, setHabitReminder, addRoutine, setRoutineSchedule, removeRoutine, completeRoutine }), [tasks, habits, routines, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday, setHabitReminder, addRoutine, setRoutineSchedule, removeRoutine, completeRoutine]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 export function useAppStore() {
