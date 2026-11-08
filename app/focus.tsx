@@ -79,9 +79,8 @@ export default function FocusScreen() {
           sourceKey: "focus:active-session:break",
           repeat: { kind: "once", date: new Date(endsAt + 5 * 60_000).toISOString() },
         });
-      } catch (error) {
-        await cancelReminder(user.id, reminder.id).catch(() => undefined);
-        throw error;
+      } catch {
+        Alert.alert("Break reminder unavailable", "Your focus-end alert is still scheduled, but the 5-minute return reminder could not be added.");
       }
       setActive(reminder);
     } catch (error) {
