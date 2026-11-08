@@ -61,9 +61,11 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         // write an empty store. Missing keys beside encrypted data must stop
         // startup and preserve the original files for recovery.
         const dataInventory = await inspectLocalEncryptedData(userId);
+        if (cancelled) return;
         const bootstrapState = classifyRecoveryBootstrapState(dataInventory);
         if (bootstrapState === "fresh-candidate") {
           await initializeUserKeyForFreshInstall(userId);
+          if (cancelled) return;
         } else if (bootstrapState !== "ready") {
           throw new Error(
             bootstrapState === "recover-existing"
@@ -74,6 +76,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
 
         const scopedKey = keyForUser(userId);
         let raw = await getEncryptedItem(scopedKey, userId);
+        if (cancelled) return;
         if (!raw) {
           const alreadyMigrated = await AsyncStorage.getItem(migratedKey(userId));
           if (!alreadyMigrated) {
@@ -84,7 +87,9 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
                 raw = legacy;
                 await setEncryptedItem(scopedKey, userId, legacy);
               },
+              () => !cancelled,
             );
+            if (cancelled) return;
             await AsyncStorage.setItem(migratedKey(userId), "1");
           }
         }
