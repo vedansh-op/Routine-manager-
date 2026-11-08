@@ -13,6 +13,13 @@ export type LocalSnap = {
 const indexKey = (userId: string) => "one-os-snap-index-v1:" + userId;
 const vaultDirectory = (userId: string) => new Directory(Paths.document, "oneos-private-snaps", userId);
 
+/** Resolve files only inside this account's vault; never trust a stored URI. */
+function localSnapFile(userId: string, id: string): File {
+  const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!safeId || safeId !== id) throw new Error("Invalid local photo identifier.");
+  return new File(vaultDirectory(userId), safeId + ".enc");
+}
+
 // Serialize every index/file mutation for one account. This prevents two
 // simultaneous saves from both reading the same index and losing one entry.
 const vaultQueues = new Map<string, Promise<void>>();
@@ -59,7 +66,7 @@ export async function saveLocalSnap(
     try {
       const directory = vaultDirectory(userId);
       directory.create({ idempotent: true, intermediates: true });
-      const file = new File(directory, safeId + ".enc");
+      const file = localSnapFile(userId, id);
       file.create({ intermediates: true, overwrite: true });
       await file.write(encryptedAtRest);
 
@@ -85,7 +92,7 @@ export async function linkLocalSnapDelivery(userId: string, id: string, delivery
 export async function readLocalSnap(userId: string, record: LocalSnap): Promise<Uint8Array> {
   // Keep deletion/replacement from racing a preview while its bytes are read.
   return withVaultLock(userId, async () => {
-    const file = new File(record.fileUri);
+    const file = localSnapFile(userId, record.id);
     if (!file.exists) throw new Error("This photo is no longer present on this device.");
     const encryptedAtRest = await file.bytes();
     try {
@@ -102,7 +109,7 @@ export async function deleteLocalSnap(userId: string, record: LocalSnap): Promis
     // Commit the index removal first. If file deletion fails, the result is
     // an unreferenced encrypted file rather than a broken visible memory.
     await setEncryptedItem(indexKey(userId), userId, JSON.stringify(existing.filter(item => item.id !== record.id)));
-    const file = new File(record.fileUri);
+    const file = localSnapFile(userId, record.id);
     if (file.exists) file.delete();
   });
 }
