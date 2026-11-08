@@ -48,6 +48,7 @@ jobs:
           npm run test:recovery
           npm run test:notifications
           npm run test:crypto
+          npm run test:session
 
       - name: Set app version from release tag
         env:
