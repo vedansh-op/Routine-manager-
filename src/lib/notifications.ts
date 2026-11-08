@@ -56,6 +56,7 @@ export type NotificationSettings = {
   enabled: boolean;
   sound: boolean;
   vibration: boolean;
+  calendarLeadMinutes: number;
   categoryEnabled: Record<NotificationCategory, boolean>;
   quietHours: QuietHours;
 };
@@ -80,6 +81,7 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   enabled: true,
   sound: true,
   vibration: true,
+  calendarLeadMinutes: 15,
   categoryEnabled: {
     task: true,
     habit: true,
@@ -187,6 +189,7 @@ function normalizeState(value: unknown): NotificationState {
       enabled: rawSettings?.enabled !== false,
       sound: rawSettings?.sound !== false,
       vibration: rawSettings?.vibration !== false,
+      calendarLeadMinutes: [5, 10, 15, 30, 60, 120].includes(rawSettings?.calendarLeadMinutes ?? 15) ? rawSettings?.calendarLeadMinutes ?? 15 : 15,
       categoryEnabled: {
         task: rawCategories?.task !== false,
         habit: rawCategories?.habit !== false,
