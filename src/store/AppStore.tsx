@@ -113,10 +113,15 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!ready || !storageUnlocked || !userId || activeUserId !== userId) return;
+    let cancelled = false;
     setEncryptedItem(keyForUser(userId), userId, JSON.stringify({ tasks, habits, completions })).catch(error => {
+      // A failed write from a previous account/session must not lock the
+      // store after the user has signed out or switched accounts.
+      if (cancelled) return;
       setStorageError(error instanceof Error ? error.message : "Could not encrypt local data.");
       setStorageUnlocked(false);
     });
+    return () => { cancelled = true; };
   }, [tasks, habits, completions, ready, storageUnlocked, userId, activeUserId]);
 
   const addTask = useCallback((title: string) => {
