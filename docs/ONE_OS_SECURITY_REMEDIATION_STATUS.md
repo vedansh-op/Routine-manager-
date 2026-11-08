@@ -1,57 +1,65 @@
 # ONE-OS security remediation status — 8 November 2026
 
-This document accompanies `202611080001_security_remediation.sql`.
+This status covers the three additive security migrations and two updated Snap Edge Functions on the Phase 1 feature branch.
 
-## What changed in source
+## Finding-by-finding status
 
-| Audit finding | Source change | Status |
+| Finding | Changes now present on branch | Status |
 |---|---|---|
-| SEC-01 shared data deleted with account | No schema change yet. Requires durable archive/ownership model before changing foreign keys. | **Open — critical release blocker** |
-| SEC-02 invite entropy and guessing | New/rotated invitation codes use 12 random bytes (96 bits); join RPC validates 24 hex chars and enforces 10 attempts per account per 15-minute window. | **Partially fixed** — account-level throttling only; add edge/IP/device abuse controls and concurrency tests. |
-| SEC-03 unconstrained weekly report | Added 16 KiB serialized JSON limit. | **Partially fixed** — strict allow-list and canonical aggregate schema still required; size cap alone does not prevent private-field leakage. |
-| SEC-04 silent device-key replacement | Registration is insert-only for a device ID; same key is idempotent; different key is rejected. | **Partially fixed** — verified rotation/recovery ceremony and key history still required. |
-| SEC-05 stale expiry snapshot | No runtime change yet. | **Open — release blocker for Snap expiry** |
-| SEC-06 acknowledgement deletes before durable copy proof | No runtime change yet. | **Open — release blocker for Snap receipt** |
-| SEC-07 deployed configuration unverified | No live project inspection or deployment performed. | **Open — mandatory non-production verification** |
-| SEC-08 report access via any common space | Partner report policy now requires a two-member space with `space_type='shared'`. | **Source fix added; test required** |
-| SEC-09 shared calendar retention after disconnect | No schema change yet. | **Open — critical release blocker** |
-| SEC-10 unbounded text | Added database limits: space name 1–80 characters; activity note <=1,000 characters. | **Source fix added; test required** |
+| SEC-01 — account deletion cascades shared data | Detached archive tables retain shared calendar snapshots without FK cascades to Auth users or live spaces. Archive participant authorization links become null on account deletion while the other participant's link survives. | **Source remediation added; needs PostgreSQL + two-account deletion tests.** Other shared data types (future shared files, notes, tasks) still need to be added to the archive model before claiming all shared history is covered. |
+| SEC-02 — weak invite entropy / guessing | 96-bit invite tokens; hashed at rest; per-account 10-attempt/15-minute throttle. | **Partially fixed.** Add IP/device abuse controls and verify transaction/concurrency behavior. |
+| SEC-03 — arbitrary weekly report JSON | 16 KiB serialized JSON limit. | **Partially fixed.** Strict key allow-list and canonical aggregate schema are still required. |
+| SEC-04 — silent device-key replacement | Registration is insert-only for a device ID; same key is idempotent; different key is rejected. | **Partially fixed.** A separately authenticated recovery/rotation ceremony and key history remain required. |
+| SEC-05 — stale presence snapshot expiry race | Replaced list-then-delete with a transactional RPC that locks presence rows and claims eligible deliveries. Edge Function performs retryable object cleanup and finalizes state. Uploads now use a 24-hour renewable lease instead of the old one-hour timeout. | **Source remediation added; test concurrent heartbeat, retry and lease behavior.** App still needs to call lease renewal during long uploads. |
+| SEC-06 — acknowledgement deletes before permanent copy | ack-snap now records downloaded only and retains the temporary encrypted object. Download is explicitly not represented as proof of a permanent copy. | **Dangerous deletion fixed; full permanent-copy verification remains open.** Drive object verification and transition to permanent_copy_verified are not implemented. |
+| SEC-07 — deployed configuration unverified | No production or non-production project inspection was performed. | **Open — mandatory non-production verification.** |
+| SEC-08 — report access via any common space | Partner policy requires exactly two members and space_type='shared'. | **Source fix added; test required.** |
+| SEC-09 — shared history after disconnection | Detached archive, two participant slots, calendar snapshot mirror, archive read policy, and MFA + typed-confirmation end_shared_connection RPC. Ended archive becomes read-only; membership removal does not delete the archive participant record. | **Source remediation added for shared calendar only; test required.** App UI and other shared data types still need integration. |
+| SEC-10 — unbounded text / write abuse | Space name 1–80 chars; activity note <=1,000 chars. | **Partially fixed.** Per-user/per-space activity rate limits and other future metadata bounds remain. |
 
-## Important safety boundary
+## Files added or changed
 
-No production Supabase SQL was run. No migration was applied to the configured Supabase project. No Edge Function was deployed, no Storage object was touched, and no secrets were read or changed.
+- supabase/migrations/202611080001_security_remediation.sql
+- supabase/migrations/202611080002_durable_shared_history.sql
+- supabase/migrations/202611080003_snap_lifecycle_hardening.sql
+- supabase/functions/ack-snap/index.ts
+- supabase/functions/expire-stale-snaps/index.ts
 
-The migration is additive and intended for a disposable/non-production project first. It has not yet been executed against PostgreSQL, so it must not be described as tested or production-ready. Review migration ordering and run the full two-account regression suite before applying it anywhere important.
+## Critical behavior changes
 
-## Remaining implementation work
+1. A recipient acknowledgement no longer removes the only temporary Snap ciphertext. It records download only.
+2. Downloaded Snaps are excluded from the 72-hour offline purge until a permanent independent copy can be verified.
+3. Expiry eligibility is claimed under database locks after checking current presence, rather than using a stale inactive-member list.
+4. Shared calendar snapshots are copied to a detached archive that does not cascade with the Auth user or live space. End Connection requires an aal2 session and exact END CONNECTION confirmation.
+5. New shared spaces automatically receive an archive container before the owner membership is inserted.
 
-### SEC-01 + SEC-09 — durable shared archive
+## Important limitations and safety boundary
 
-Implement a durable shared archive independent of either Auth user row. It must retain both participants' authorized read-only history after End Connection and after either account's deletion, while private records remain individually erasable. Add an explicit archive participant/ownership table and retention lifecycle. Do not simply replace cascades with `SET NULL`; define who can read, export, erase, and retain each record first. Account deletion must be a delayed workflow with a seven-day grace period and a verified archive-preservation step.
+No SQL was executed against the configured Supabase project. No migration has been applied to production or to a test project. No Edge Function was deployed. No Storage object was touched. No production secrets were read or changed.
 
-### SEC-05 — atomic expiry eligibility
+These are source changes, not verified deployed fixes. The migrations have not yet been executed by PostgreSQL. They must be reviewed and tested in a disposable non-production Supabase project before any deployment. In particular:
+- Archive coverage currently mirrors shared calendar activities, not future shared file/task/note tables.
+- The app must call the upload-lease renewal RPC during long-running uploads.
+- Permanent Google Drive copy verification is not implemented; temporary Snap copies are intentionally retained after download.
+- The report JSON schema remains broader than the intended aggregate-only contract.
+- Device key rotation/recovery is not implemented.
+- Deployment catalog/grant/storage/cron/secret verification remains outstanding.
 
-Replace the Edge Function's stale list-then-delete algorithm with a transactional database claim/expiry RPC that rechecks and locks current presence and delivery state at the moment of claiming. Use an explicit upload lease/heartbeat rather than deleting all uploads older than one hour. Storage deletion must be retryable and idempotent; do not remove metadata before recording enough state to retry object cleanup.
+## Required non-production tests
 
-### SEC-06 — verified Snap receipt
-
-Implement a durable state machine with distinct downloaded, permanent-copy-verified, acknowledged, and temporary-cleaned states. The recipient must supply a scoped Drive object reference and integrity proof; a client acknowledgement or device signature alone is not proof that bytes remain recoverable. Keep the temporary ciphertext until the permanent destination object and checksum have been verified. Failure and duplicate requests must be retry-safe.
-
-### SEC-07 — non-production verification
-
-Create a separate Supabase test project. Apply migrations there, inspect effective grants/RLS policies/Storage policies/function grants/cron/secrets, and run negative tests with two accounts and multiple devices. Confirm the Edge Function's custom cron secret is configured only in Supabase secrets/Vault. Do not use the production project for this verification.
-
-## Required tests for the new migration
-
-1. New invite is 24 hex characters and its stored value is only a SHA-256 hash.
-2. Eleven join attempts in one 15-minute window are throttled; the window resets after expiry.
-3. A 24-character invite is accepted once; replay and malformed/expired values fail generically.
-4. Existing device ID + same key is idempotent; same device ID + different key is rejected.
-5. Weekly report payloads over 16 KiB are rejected.
-6. Shared report opt-in is visible only to the other member of the intended two-member shared space; personal-space and unrelated users are denied.
-7. Space names over 80 characters and activity notes over 1,000 characters are rejected.
-8. Existing valid data passes the new constraints before the migration is considered deployable.
+1. Apply migrations in order to a clean Supabase project and confirm all SQL compiles.
+2. Create a shared space; verify its archive and both participant slots are created.
+3. Add, edit and delete a calendar activity; verify the detached archive snapshot remains intact, including deletion history.
+4. End the connection with aal2 and exact phrase; verify writes are rejected and both participants can read archive history.
+5. Delete one test Auth account; verify the other participant still reads archive history and archive rows remain.
+6. Verify a heartbeat racing the expiry claim prevents the delivery claim when heartbeat wins the lock.
+7. Verify expiry cleanup retries after Storage failure and never purges downloaded deliveries.
+8. Verify uploading leases can be renewed and expired leases are cleaned safely.
+9. Verify ack-snap marks download only and leaves the ciphertext object and delivery envelope intact.
+10. Test invite throttling, device key immutability, report size, report RLS, and text constraints.
+11. Inspect effective grants, RLS policies, Storage policies, SECURITY DEFINER grants, cron, Vault and Edge Function secrets in the test project.
+12. Run two-account and multi-device negative tests for every table and object path.
 
 ## Release decision
 
-ONE-OS remains **not ready for production release** until SEC-01, SEC-05, SEC-06, SEC-07, and SEC-09 are implemented and verified, and the partial fixes above have passed the test suite. The strict security audit decision remains in force.
+ONE-OS remains **not ready for production release**. The strict security audit gate remains in force until the source changes compile and pass the complete non-production test suite, the app is integrated with the new RPCs/states, permanent-copy verification is implemented, the aggregate report schema and device recovery protocol are complete, and deployed configuration is independently verified.
