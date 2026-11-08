@@ -47,6 +47,7 @@ jobs:
           npx tsc --noEmit
           npm run test:recovery
           npm run test:notifications
+          npm run test:crypto
 
       - name: Set app version from release tag
         env:
