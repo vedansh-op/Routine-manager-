@@ -33,7 +33,7 @@ alter table public.snap_deliveries
   add column if not exists downloaded_at timestamptz,
   add column if not exists permanent_copy_verified_at timestamptz,
   add column if not exists upload_lease_expires_at timestamptz not null default (now() + interval '24 hours'),
-  add column if not exists expiry_claimed_at timestamptz,
+  add column if not exists expiry_claimed_at timestamptz,\n  add column if not exists expiry_previous_status text,
   add column if not exists destination_provider text,
   add column if not exists destination_object_id text,
   add column if not exists destination_sha256 text;
@@ -88,7 +88,7 @@ begin
     if v_member.last_seen_at < p_cutoff then
       for v_row in
         update public.snap_deliveries d
-          set status='expiring', expiry_claimed_at=now()
+          set expiry_previous_status=d.status, status='expiring', expiry_claimed_at=now()
           where d.space_id=v_member.space_id
             and d.recipient_id=v_member.user_id
             and d.status='pending'
