@@ -12,7 +12,7 @@ The team has a coherent source inventory, ownership model, threat model, archive
 | Phase 1 deliverable | Decision | Evidence / limitation |
 |---|---|---|
 | Existing repository/source inventory | **Complete for checked-in branch** | Current screens, libraries, tests, migrations, SQL functions, Edge Functions, workflows and current known gaps are documented. Live deployed catalog remains unknown. |
-| Existing schema/RLS/Storage inventory | **Source inventory complete; live validation open** | Migrations 001–013 and read-only database/Storage audit scripts are in source. Effective deployed policy/grant state has not been queried. |
+| Existing schema/RLS/Storage inventory | **Source inventory complete; live validation open** | The final source-level audit lists 21 RLS/Storage policies and 23 SECURITY DEFINER functions across the checked-in migrations. Effective deployed policy/grant state has not been queried. See the final inventory section of ONE_OS_SUPABASE_SECURITY_AUDIT.md. |
 | Data ownership matrix | **Complete as design baseline** | See ONE_OS_PHASE_1_SCHEMA_AND_ARCHIVE_SPEC.md. Private local, Supabase, shared and future Drive boundaries are distinguished. |
 | Threat model | **Complete as engineering baseline** | See ONE_OS_PHASE_1_THREAT_MODEL.md. Includes assets, trust boundaries, abuse cases, authorization invariants and residual risks. |
 | Supabase vs Drive boundary | **Complete as design baseline** | Supabase is metadata/authorization; private archives and owner-authorized Drive content are encrypted on-device. No Drive integration is claimed. |
@@ -25,14 +25,14 @@ The team has a coherent source inventory, ownership model, threat model, archive
 | Notification foundation | **Local source foundation present; OS testing open** | Local task/habit/routine/calendar/focus reminders, controls and actions exist. Persisted-state validation now has regression tests. Remote push, geofence/travel and advanced lifecycle features remain future integrations. |
 | SQL compilation and non-production RLS tests | **Open / external environment required** | No disposable Supabase project has applied migrations 001–013; PostgreSQL compilation, effective grants, two-account negatives and concurrency tests are unverified. |
 | Independent cryptographic review | **Open / external specialist required** | ChatGPT/source review is not a substitute for independent cryptographic review. The proposed key hierarchy/recovery envelope and a versioned Snap metadata-AAD migration must not be treated as approved until reviewed. |
-| Physical Android and two-device tests | **Open / physical devices required** | Build/CI and source tests do not prove SecureStore, notification delivery, MFA provider behavior, reboot, OEM battery restrictions or two-device Snap behavior. |
+| Feature-branch APK build | **Complete** | Standalone debug APK built and embedded JavaScript bundle verified in run 42533640626; artifact is available from the run. It is a debug/test APK, not a Play Store build. |\n| Physical Android and two-device tests | **Open / physical devices required** | APK is built but has not been installed. SecureStore, notification delivery, MFA provider behavior, reboot, OEM battery restrictions and two-device Snap behavior remain untested. |
 | Production deployment | **Intentionally not performed** | No production SQL, migration, Edge Function, Auth configuration, Storage object, cron, secret or live user data was changed or accessed. |
 
 ## 2. CI evidence
 
 The latest verified feature-branch commit passed the TypeScript validation workflow:
-- Commit: 47eeade84cfb7d045dc096471568dfd1ffb9fc10
-- Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42533644210
+- Commit: 1bab4deda75f2d345f41b3ad8f2f9c2e2a1532e7
+- Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42534451255
 - Verified successful job steps: dependency installation, TypeScript validation, recovery-state tests, notification-state tests, Snap crypto tests, and secure session storage tests.
 - Recovery-state suite: 27 tests passed.
 - Notification-state suite: 6 tests passed.
