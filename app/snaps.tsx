@@ -284,9 +284,8 @@ export default function SnapMemoriesScreen() {
         body: { deliveryId: item.id },
       });
       if (ackError) {
-        // The server removes the delivery row after deleting the cloud object.
-        // If its success response was lost, a retry can legitimately receive 404.
-        // This item came from this recipient's inbox and its local copy is durable.
+        // Download acknowledgement keeps the server ciphertext and delivery row.
+        // A 404 is not treated as proof of permanent-copy verification.
         const status = (ackError as { context?: { status?: number } }).context?.status;
         if (status !== 404) throw ackError;
       }
