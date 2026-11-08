@@ -209,15 +209,22 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     if (!alreadyDone && userId) {
       const habit = habits.find(item => item.id === id);
       if (!habit) return false;
-      const reminderState = await getNotificationState(userId);
-      const parentIds = new Set([
-        ...(habit.reminderIds ?? (habit.reminderId ? [habit.reminderId] : [])),
-        ...reminderState.reminders
-          .filter(item => item.sourceKey?.startsWith("habit:" + id + ":"))
-          .map(item => item.id),
-      ]);
-      for (const reminderId of parentIds) {
-        await cancelSnoozesForReminder(userId, reminderId);
+      try {
+        const reminderState = await getNotificationState(userId);
+        const parentIds = new Set([
+          ...(habit.reminderIds ?? (habit.reminderId ? [habit.reminderId] : [])),
+          ...reminderState.reminders
+            .filter(item => item.sourceKey?.startsWith("habit:" + id + ":"))
+            .map(item => item.id),
+        ]);
+        for (const reminderId of parentIds) {
+          await cancelSnoozesForReminder(userId, reminderId);
+        }
+      } catch (error) {
+        setStorageError(error instanceof Error
+          ? "The habit was not checked off because its pending reminders could not be safely updated: " + error.message
+          : "The habit was not checked off because its pending reminders could not be safely updated.");
+        return false;
       }
     }
     setCompletions(old => old.includes(key) ? old.filter(x => x !== key) : [...old, key]);
