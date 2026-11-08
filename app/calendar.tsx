@@ -5,7 +5,7 @@ import { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/auth/AuthProvider";
 import { useAppStore } from "@/store/AppStore";
-import { getNotificationPermission, getNotificationState, scheduleReminder } from "@/lib/notifications";
+import { cancelReminder, getNotificationPermission, getNotificationState, scheduleReminder } from "@/lib/notifications";
 import {
   DEFAULT_PARTNER_TIME_ZONE,
   formatInTimeZone,
@@ -82,13 +82,13 @@ export default function ActivityCalendarScreen() {
   useEffect(() => {
     let cancelled = false;
     const syncLocalCalendarAlerts = async () => {
-      if (!user?.id || !canEdit || activities.length === 0) return;
+      if (!user?.id || !canEdit) return;
       try {
         const [permission, notificationState] = await Promise.all([
           getNotificationPermission(),
           getNotificationState(user.id),
         ]);
-        if (!permission.granted || cancelled) return;
+        if (cancelled) return;
         const now = Date.now();
         const leadMinutes = notificationState.settings.calendarLeadMinutes;
         const horizon = now + 30 * 24 * 60 * 60 * 1000;
@@ -98,6 +98,17 @@ export default function ActivityCalendarScreen() {
             return Number.isFinite(startsAt) && startsAt > now + 30_000 && startsAt <= horizon;
           })
           .slice(0, 40);
+        const desiredKeys = new Set(upcoming.map(item => "calendar:" + item.id));
+        const stale = notificationState.reminders.filter(item =>
+          item.category === "calendar" &&
+          item.sourceKey?.startsWith("calendar:") &&
+          !desiredKeys.has(item.sourceKey),
+        );
+        for (const reminder of stale) {
+          if (cancelled) return;
+          await cancelReminder(user.id, reminder.id);
+        }
+        if (!permission.granted) return;
         for (const item of upcoming) {
           if (cancelled) return;
           const startsAt = new Date(item.starts_at).getTime();
