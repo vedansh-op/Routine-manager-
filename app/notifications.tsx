@@ -21,6 +21,7 @@ import {
   NOTIFICATION_CATEGORIES,
   NotificationCategory,
   NotificationSettings,
+  NotificationHistoryEntry,
   Reminder,
   requestNotificationPermission,
   scheduleReminder,
@@ -53,6 +54,7 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [permission, setPermission] = useState<boolean | null>(null);
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [history, setHistory] = useState<NotificationHistoryEntry[]>([]);
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [title, setTitle] = useState("");
@@ -76,6 +78,7 @@ export default function NotificationsScreen() {
       setPermission(permissionState.granted);
       setSettings(localState.settings);
       setReminders(localState.reminders);
+      setHistory(localState.history);
     } catch (error) {
       Alert.alert("Notifications unavailable", error instanceof Error ? error.message : "Secure notification settings could not be loaded.");
     } finally {
@@ -107,6 +110,7 @@ export default function NotificationsScreen() {
       const next = await updateNotificationSettings(user.id, patch);
       setSettings(next.settings);
       setReminders(next.reminders);
+      setHistory(next.history);
     } catch (error) {
       Alert.alert("Couldn't update settings", error instanceof Error ? error.message : "Please try again.");
     } finally {
@@ -308,6 +312,17 @@ export default function NotificationsScreen() {
       </View>)}
     </View>
 
+    <View style={s.card}>
+      <Text style={s.cardTitle}>Recent notification activity</Text>
+      {history.length === 0 ? <Text style={s.muted}>No notification activity recorded on this phone yet. Foreground deliveries and actions appear here.</Text> : history.slice(0, 12).map(entry => <View key={entry.id} style={s.historyRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.reminderTitle}>{entry.title}</Text>
+          <Text style={s.mutedSmall}>{getNotificationCategoryLabel(entry.category)} · {new Date(entry.occurredAt).toLocaleString()}</Text>
+        </View>
+        <Text style={s.historyEvent}>{entry.event.toUpperCase()}</Text>
+      </View>)}
+    </View>
+
     <Text style={s.footer}>Local reminders work offline. Shared activity alerts, remote push, location triggers and automatic daily summaries need their later integration stages.</Text>
   </ScrollView>;
 }
@@ -330,5 +345,6 @@ const s = StyleSheet.create({
   disabled:{opacity:0.45},refresh:{color:"#c7bfff",fontSize:11,fontWeight:"700"},reminder:{flexDirection:"row",alignItems:"center",gap:10,paddingVertical:13,borderTopWidth:1,borderTopColor:"#2b303a"},
   reminderTitle:{color:"#f4f2ff",fontSize:13,fontWeight:"700"},reminderActions:{gap:12,alignItems:"flex-end"},action:{color:"#c7bfff",fontSize:11,fontWeight:"800"},remove:{color:"#ff9eae",fontSize:10,fontWeight:"800"},
   scheduled:{color:"#9bd8b1",fontSize:9,fontWeight:"800",marginTop:5},completed:{color:"#c7bfff",fontSize:9,fontWeight:"800",marginTop:5},
+  historyRow:{flexDirection:"row",alignItems:"center",gap:10,paddingVertical:11,borderTopWidth:1,borderTopColor:"#2b303a"},historyEvent:{color:"#b7adff",fontSize:8,fontWeight:"900",letterSpacing:0.7},
   footer:{color:"#686e7b",fontSize:10,lineHeight:16,textAlign:"center",marginTop:24},
 });
