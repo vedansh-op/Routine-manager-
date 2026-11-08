@@ -474,16 +474,12 @@ export async function snoozeReminder(userId: string, reminderId: string, minutes
   if (!reminder || reminder.completed) return;
 
   // Keep a recurring source reminder intact. Snoozing creates a separate
-  // one-off alert; a fired one-time reminder is marked complete instead.
-  if (reminder.repeat.kind === "once") {
-    reminder.notificationId = null;
-    reminder.enabled = false;
-    reminder.completed = true;
-  }
+  // one-off alert; a one-time source is paused only after the snooze is saved.
+  const isOneTime = reminder.repeat.kind === "once";
+  const oldId = reminder.notificationId;
   const snoozed: Reminder = {
     ...reminder,
     id: makeId(),
-    title: reminder.title,
     sourceKey: undefined,
     repeat: { kind: "once", date: new Date(Date.now() + minutes * 60_000).toISOString() },
     notificationId: null,
@@ -492,8 +488,19 @@ export async function snoozeReminder(userId: string, reminderId: string, minutes
     createdAt: new Date().toISOString(),
   };
   snoozed.notificationId = await scheduleNative(userId, snoozed, state.settings);
+  if (isOneTime) {
+    reminder.notificationId = null;
+    reminder.enabled = false;
+    reminder.completed = true;
+  }
   state.reminders = [snoozed, ...state.reminders].slice(0, 200);
-  await saveState(userId, state);
+  try {
+    await saveState(userId, state);
+  } catch (error) {
+    if (snoozed.notificationId) await Notifications.cancelScheduledNotificationAsync(snoozed.notificationId).catch(() => undefined);
+    throw error;
+  }
+  if (isOneTime && oldId) await Notifications.cancelScheduledNotificationAsync(oldId).catch(() => undefined);
 }
 
 export async function updateNotificationSettings(
