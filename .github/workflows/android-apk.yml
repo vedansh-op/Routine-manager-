@@ -55,6 +55,9 @@ jobs:
       - name: Run secure session storage tests
         run: npm run test:session
 
+      - name: Run database-source inventory tests
+        run: npm run test:database-source
+
       - name: Generate native Android project
         run: npx expo prebuild --platform android --non-interactive
 
