@@ -4,7 +4,7 @@
 **Current work branch:** phase-1/one-os-architecture-blueprint
 **Pull request:** https://github.com/vedansh-op/Routine-manager-/pull/1
 **Phase:** 1 of 8 — Architecture, Security and Data Design
-**Phase decision:** Engineering/design baseline prepared; formal exit waits on independent cryptographic review, disposable Supabase validation and physical Android tests. See docs/ONE_OS_PHASE_1_EXIT_REVIEW.md.
+**Phase decision:** Engineering/design baseline prepared; formal exit waits on independent cryptographic review, disposable Supabase validation and physical Android tests. A current-branch debug APK has now built successfully but is not device-tested. See docs/ONE_OS_PHASE_1_EXIT_REVIEW.md.
 
 ## Repository and stack
 
@@ -106,6 +106,7 @@ No SQL has been run against the configured project during this work. No Edge Fun
 ## Phase 1 design documents
 
 - docs/ONE_OS_PHASE_1_THREAT_MODEL.md
+- docs/ONE_OS_PHASE_1_DATABASE_OBJECT_INVENTORY.md (see the linked Supabase security audit's final source-level inventory section)
 - docs/ONE_OS_PHASE_1_SCHEMA_AND_ARCHIVE_SPEC.md
 - docs/ONE_OS_PHASE_1_FAILURE_MATRIX.md
 - docs/ONE_OS_PHASE_1_EXIT_REVIEW.md
@@ -120,7 +121,7 @@ The new schema/archive document describes proposed future metadata concepts. It 
 
 ## CI validation
 
-The latest verified feature-branch CI run passed on commit 47eeade84cfb7d045dc096471568dfd1ffb9fc10:
+The latest verified feature-branch CI run passed on commit 1bab4deda75f2d345f41b3ad8f2f9c2e2a1532e7:
 - TypeScript validation passed.
 - Recovery-state suite: 27 tests passed.
 - Notification-state suite: 6 tests passed.
@@ -128,15 +129,16 @@ The latest verified feature-branch CI run passed on commit 47eeade84cfb7d045dc09
 - Secure session storage suite: 7 tests passed.
 - **Total: 47 automated tests passed across four suites.**
 
-Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42533644210
+Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42534451255
 
-The TypeScript workflow now runs recovery, notification-state, Snap crypto and secure session storage suites. The Android APK and versioned release workflows also include these regression tests, but the feature-branch commit above is not itself a verified APK artifact. The APK workflow is configured to run on main pushes or manual dispatch; do not infer an APK was built from a green TypeScript job.
+The TypeScript workflow runs recovery, notification-state, Snap crypto and secure session storage suites. The Android APK and versioned release workflows run the same regression tests. The APK workflow now also builds this feature branch for device validation.
 
 ## Build and release status
 
-- A previous standalone debug APK was built from an older base/main commit in run #76. It is historical and is not a build of the current feature-branch source.
-- No newer feature-branch APK has been verified or installed on a physical Android device in this review.
-- The README release page exists, but no versioned production-signed release is claimed here.
+- A current-branch standalone debug APK was built successfully by run https://github.com/vedansh-op/Routine-manager-/actions/runs/42533640626 from source commit `47eeade84cfb7d045dc096471568dfd1ffb9fc10`. Artifact: `ONE-OS-debug-apk` (47,261,710-byte ZIP; contains a 135,856,630-byte APK).
+- APK SHA-256: `de9f626b1a5c0051565a2f6f956fe0cb76b7f608786a90a2bd05a83b42b9fa66`. The APK contains `AndroidManifest.xml`, 21 DEX files and `assets/index.android.bundle`; package includes arm64-v8a, armeabi-v7a, x86 and x86_64 libraries.
+- The workflow verified the embedded JavaScript bundle and uploaded the APK. It has **not** been installed or tested on a physical Android device.
+- No versioned release or Play Store production-signed build is claimed here.
 - The release workflow creates a standalone debug/test APK, not a Play Store production-signed APK.
 
 ## Next gates
