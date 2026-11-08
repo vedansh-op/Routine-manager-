@@ -13,6 +13,9 @@ const compiled = ts.transpileModule(source, {
 
 let storedValue = null;
 let writes = 0;
+let storageValue = "enc1:" + "00".repeat(24) + ":00";
+let storageWrites = 0;
+let rejectDecrypt = false;
 let generatedBytes = 1;
 const secureStore = {
   AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: "device-only",
@@ -26,8 +29,11 @@ const mocks = {
   "@react-native-async-storage/async-storage": {
     __esModule: true,
     default: {
-      getItem: async () => "enc1:" + "00".repeat(24) + ":00",
-      setItem: async () => {},
+      getItem: async () => storageValue,
+      setItem: async (_key, value) => {
+        storageWrites += 1;
+        storageValue = value;
+      },
     },
   },
   "expo-secure-store": secureStore,
@@ -36,7 +42,10 @@ const mocks = {
   },
   "@noble/ciphers/chacha.js": {
     xchacha20poly1305: () => ({
-      decrypt: () => new Uint8Array([1]),
+      decrypt: () => {
+        if (rejectDecrypt) throw new Error("authentication failed");
+        return new Uint8Array([1]);
+      },
       encrypt: () => new Uint8Array([1]),
     }),
   },
@@ -95,4 +104,31 @@ test("a correctly encoded key with the wrong length is rejected without replacem
   );
   assert.equal(writes, 0);
   assert.equal(storedValue, "ab".repeat(31));
+});
+
+
+test("tampered ciphertext fails authentication and remains untouched", async () => {
+  storedValue = "ab".repeat(32);
+  storageValue = "enc1:" + "00".repeat(24) + ":00";
+  storageWrites = 0;
+  rejectDecrypt = true;
+  await assert.rejects(
+    store.getEncryptedItem("one-os-v2:test", "test"),
+    /authentication failed/i,
+  );
+  assert.equal(storageWrites, 0);
+  assert.equal(storageValue, "enc1:" + "00".repeat(24) + ":00");
+  rejectDecrypt = false;
+});
+
+test("malformed encrypted envelopes are rejected without rewriting the original record", async () => {
+  storedValue = "ab".repeat(32);
+  storageValue = "enc1:not-a-valid-envelope";
+  storageWrites = 0;
+  await assert.rejects(
+    store.getEncryptedItem("one-os-v2:test", "test"),
+    /invalid format/i,
+  );
+  assert.equal(storageWrites, 0);
+  assert.equal(storageValue, "enc1:not-a-valid-envelope");
 });
