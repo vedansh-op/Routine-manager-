@@ -67,7 +67,7 @@ test("a valid data key permits local data access without a Snap device registry 
   );
 });
 
-test("malformed keys and inconsistent local inventories fail closed", () => {
+test("malformed keys fail closed and existing encrypted vault data requires recovery", () => {
   assert.equal(
     classifyRecoveryBootstrapState(inventory({ dataKey: "present-malformed" })),
     "needs-review",
@@ -82,6 +82,6 @@ test("malformed keys and inconsistent local inventories fail closed", () => {
     classifyRecoveryBootstrapState(
       inventory({ appStoreRecord: "legacy-plaintext", snapVault: "contains-entries" }),
     ),
-    "needs-review",
+    "recover-existing",
   );
 });
