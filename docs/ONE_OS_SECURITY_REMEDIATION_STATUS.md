@@ -1,6 +1,6 @@
 # ONE-OS security remediation status — 8 November 2026
 
-This status covers the three additive security migrations and two updated Snap Edge Functions on the Phase 1 feature branch.
+This status covers the four additive security migrations and two updated Snap Edge Functions on the Phase 1 feature branch. The shared-history migration's two malformed function terminators were corrected; SQL compilation still requires non-production PostgreSQL validation.
 
 ## Finding-by-finding status
 
@@ -8,7 +8,7 @@ This status covers the three additive security migrations and two updated Snap E
 |---|---|---|
 | SEC-01 — account deletion cascades shared data | Detached archive tables retain shared calendar snapshots without FK cascades to Auth users or live spaces. Archive participant authorization links become null on account deletion while the other participant's link survives. | **Source remediation added; needs PostgreSQL + two-account deletion tests.** Other shared data types (future shared files, notes, tasks) still need to be added to the archive model before claiming all shared history is covered. |
 | SEC-02 — weak invite entropy / guessing | 96-bit invite tokens; hashed at rest; per-account 10-attempt/15-minute throttle. | **Partially fixed.** Add IP/device abuse controls and verify transaction/concurrency behavior. |
-| SEC-03 — arbitrary weekly report JSON | 16 KiB serialized JSON limit plus a strict numeric aggregate-key allow-list (tasks_completed, habits_completed, focus_minutes, streak_days, active_days, completion_percent). | **Partially fixed.** Strict key allow-list and canonical aggregate schema are still required. |
+| SEC-03 — arbitrary weekly report JSON | 16 KiB serialized JSON limit plus a strict numeric allow-list matching the app payload (`tasks_total`, `tasks_completed`, `habits_total`, `habit_checkins_last_7_days`); requires all four fields and checks completed tasks do not exceed total tasks. | **Source fix aligned with app; database and UI tests still required.** |
 | SEC-04 — silent device-key replacement | Registration is insert-only for a device ID; same key is idempotent; different key is rejected. | **Partially fixed.** A separately authenticated recovery/rotation ceremony and key history remain required. |
 | SEC-05 — stale presence snapshot expiry race | Replaced list-then-delete with a transactional RPC that locks presence rows and claims eligible deliveries. Edge Function performs retryable object cleanup and finalizes state. Uploads now use a 24-hour renewable lease instead of the old one-hour timeout. | **Source remediation added; test concurrent heartbeat, retry and lease behavior.** App still needs to call lease renewal during long uploads. |
 | SEC-06 — acknowledgement deletes before permanent copy | ack-snap now records downloaded only and retains the temporary encrypted object. Download is explicitly not represented as proof of a permanent copy. | **Dangerous deletion fixed; full permanent-copy verification remains open.** Drive object verification and transition to permanent_copy_verified are not implemented. |
@@ -45,7 +45,7 @@ These are source changes, not verified deployed fixes. The migrations have not y
 - Archive coverage currently mirrors shared calendar activities, not future shared file/task/note tables.
 - The app must call the upload-lease renewal RPC during long-running uploads. Invitation UI now accepts and displays 24-character codes.
 - Permanent Google Drive copy verification is not implemented; temporary Snap copies are intentionally retained after download.
-- The report JSON schema is now restricted to numeric aggregate fields; confirm the field names match the final product contract before release.
+- The report JSON schema is now restricted to the four numeric aggregate fields currently emitted by the app; future report fields require an explicit schema migration.
 - Device key rotation/recovery is not implemented.
 - Deployment catalog/grant/storage/cron/secret verification remains outstanding.
 
