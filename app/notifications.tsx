@@ -406,6 +406,7 @@ export default function NotificationsScreen() {
       </View>)}
     </View>
 
+    <Link href="/focus" style={s.settingsLink}>Start a focus session →</Link>
     <Text style={s.footer}>Local reminders work offline. Shared activity alerts, remote push, location triggers and automatic daily summaries need their later integration stages.</Text>
   </ScrollView>;
 }
