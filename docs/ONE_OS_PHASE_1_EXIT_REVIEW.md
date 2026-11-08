@@ -24,18 +24,21 @@ The team has a coherent source inventory, ownership model, threat model, archive
 | Authentication/MFA/device controls | **Source foundation present; server/provider tests open** | Verified-email and AAL2 route/write guards, TOTP factor UI, secure session storage and device-key revocation are on the branch. Backup TOTP is not encryption recovery. Per-device Supabase session revocation is not implemented. |
 | Notification foundation | **Local source foundation present; OS testing open** | Local task/habit/routine/calendar/focus reminders, controls and actions exist. Persisted-state validation now has regression tests. Remote push, geofence/travel and advanced lifecycle features remain future integrations. |
 | SQL compilation and non-production RLS tests | **Open / external environment required** | No disposable Supabase project has applied migrations 001–013; PostgreSQL compilation, effective grants, two-account negatives and concurrency tests are unverified. |
-| Independent cryptographic review | **Open / external specialist required** | ChatGPT/source review is not a substitute for independent cryptographic review. The proposed key hierarchy/recovery envelope must not be implemented as production recovery until reviewed. |
+| Independent cryptographic review | **Open / external specialist required** | ChatGPT/source review is not a substitute for independent cryptographic review. The proposed key hierarchy/recovery envelope and a versioned Snap metadata-AAD migration must not be treated as approved until reviewed. |
 | Physical Android and two-device tests | **Open / physical devices required** | Build/CI and source tests do not prove SecureStore, notification delivery, MFA provider behavior, reboot, OEM battery restrictions or two-device Snap behavior. |
 | Production deployment | **Intentionally not performed** | No production SQL, migration, Edge Function, Auth configuration, Storage object, cron, secret or live user data was changed or accessed. |
 
 ## 2. CI evidence
 
 The latest verified feature-branch commit passed the TypeScript validation workflow:
-- Commit: 390e9cf22ab01eca6bea82058306604e054e0fd3
-- Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42531551790
-- Verified successful job steps: dependency installation, TypeScript validation, recovery-state tests, notification-state tests.
+- Commit: bf381bf71a99fa425bb5abddf3d44c83b5657566
+- Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42532866305
+- Verified successful job steps: dependency installation, TypeScript validation, recovery-state tests, notification-state tests, Snap crypto tests, and secure session storage tests.
 - Recovery-state suite: 27 tests passed.
 - Notification-state suite: 6 tests passed.
+- Snap crypto suite: 7 tests passed.
+- Secure session storage suite: 7 tests passed.
+- **Total: 47 automated tests passed across four suites.**
 
 Earlier red runs were caused by cross-realm strict assertions in the new test harness. The test assertions were corrected; the green run above is the evidence to use. Do not cite the earlier failed runs as current status.
 
@@ -43,7 +46,7 @@ The later commits in this branch add documentation and workflow configuration. T
 
 ## 3. Hard blockers before Phase 1 can be formally closed
 
-1. **Independent cryptographic review:** review key separation, recovery envelope, nonce and AAD rules, device replacement, historical Snap recovery, rotation and rollback. The archive document is a proposal until this is done.
+1. **Independent cryptographic review:** review key separation, recovery envelope, nonce and AAD rules, device replacement, historical Snap recovery, rotation and rollback. The current Snap AEAD authenticates ciphertext and its wrapped file key, but does not bind separate delivery-row metadata (space, sender, recipient, recipient device, MIME type, capture time and size) as associated data. Define a new versioned, backward-compatible envelope and server RPC/migration for metadata binding; never silently retry a tampered v2 envelope as v1. The archive document remains a proposal until independent review.
 2. **Disposable Supabase validation:** apply all migrations in order to a new test project; validate SQL compilation, policies/grants, triggers, Edge Functions and scheduled-job assumptions; run the complete two-account/concurrency negative matrix.
 3. **Physical Android validation:** install the current feature-branch build on real device(s); validate session storage, MFA, local-key bootstrap, reminders, reboot/timezone/battery conditions and Snap transfer/revocation. A second account/device is required for partner flows.
 
