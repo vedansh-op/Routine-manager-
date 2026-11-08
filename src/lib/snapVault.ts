@@ -79,9 +79,12 @@ export async function linkLocalSnapDelivery(userId: string, id: string, delivery
 }
 
 export async function readLocalSnap(userId: string, record: LocalSnap): Promise<Uint8Array> {
-  const file = new File(record.fileUri);
-  if (!file.exists) throw new Error("This photo is no longer present on this device.");
-  return decryptLocalBytes(userId, await file.bytes());
+  // Keep deletion/replacement from racing a preview while its bytes are read.
+  return withVaultLock(userId, async () => {
+    const file = new File(record.fileUri);
+    if (!file.exists) throw new Error("This photo is no longer present on this device.");
+    return decryptLocalBytes(userId, await file.bytes());
+  });
 }
 
 export async function deleteLocalSnap(userId: string, record: LocalSnap): Promise<void> {
