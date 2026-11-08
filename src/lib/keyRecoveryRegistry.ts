@@ -109,7 +109,7 @@ export type LocalEncryptedDataInventory = {
  * Expo reports inaccessible and missing directories identically.
  */
 export async function inspectLocalEncryptedData(userId: string): Promise<LocalEncryptedDataInventory> {
-  if (!userId || userId.length > 128) {
+  if (!ACCOUNT_ID_PATTERN.test(userId)) {
     throw new Error("A valid account ID is required to inspect local encrypted data.");
   }
 
@@ -142,15 +142,35 @@ export async function inspectLocalEncryptedData(userId: string): Promise<LocalEn
       ? "absent"
       : snapIndexRaw.startsWith("enc1:") ? "encrypted" : "legacy-plaintext";
 
-    const vault = new Directory(Paths.document, "oneos-private-snaps", userId);
-    if (!vault.exists) {
-      // Expo's exists flag is false for both absent and inaccessible paths.
-      result.snapVault = "not-visible";
+    // Inspect from the accessible document root downward. A missing
+    // per-user directory is considered empty only after its parent was
+    // successfully listed; an inaccessible parent remains unknown.
+    const documents = new Directory(Paths.document);
+    if (!documents.exists) {
+      result.snapVault = "unknown";
     } else {
-      const entries = vault.list();
-      const files = entries.filter(entry => entry instanceof File);
-      result.snapVaultFileCount = files.length;
-      result.snapVault = entries.length > 0 ? "contains-entries" : "empty-visible";
+      const documentEntries = documents.list();
+      const vaultRoot = documentEntries.find(
+        entry => entry instanceof Directory && entry.name === "oneos-private-snaps",
+      );
+      if (!vaultRoot) {
+        result.snapVault = "empty-visible";
+        result.snapVaultFileCount = 0;
+      } else {
+        const userEntries = vaultRoot.list();
+        const userDirectory = userEntries.find(
+          entry => entry instanceof Directory && entry.name === userId,
+        );
+        if (!userDirectory) {
+          result.snapVault = "empty-visible";
+          result.snapVaultFileCount = 0;
+        } else {
+          const entries = userDirectory.list();
+          const files = entries.filter(entry => entry instanceof File);
+          result.snapVaultFileCount = files.length;
+          result.snapVault = entries.length > 0 ? "contains-entries" : "empty-visible";
+        }
+      }
     }
 
     result.status = "complete";
