@@ -11,7 +11,7 @@ This status covers the four additive security migrations and two updated Snap Ed
 | SEC-03 — arbitrary weekly report JSON | 16 KiB serialized JSON limit plus a strict numeric allow-list matching the app payload (`tasks_total`, `tasks_completed`, `habits_total`, `habit_checkins_last_7_days`); requires all four fields as non-negative integer counters and checks completed tasks do not exceed total tasks. | **Source fix aligned with app; database and UI tests still required.** |
 | SEC-04 — silent device-key replacement | Registration is insert-only for a device ID; same key is idempotent; different key is rejected. | **Partially fixed.** A separately authenticated recovery/rotation ceremony and key history remain required. |
 | SEC-05 — stale presence snapshot expiry race | Replaced list-then-delete with a transactional RPC that locks presence rows and claims eligible deliveries. Edge Function performs retryable object cleanup and finalizes state. Uploads now use a 24-hour renewable lease instead of the old one-hour timeout. | **Source remediation added; test concurrent heartbeat, retry and lease behavior.** App still needs to call lease renewal during long uploads. |
-| SEC-06 — acknowledgement deletes before permanent copy | ack-snap now records downloaded only and retains the temporary encrypted object. Download is explicitly not represented as proof of a permanent copy. | **Dangerous deletion fixed; full permanent-copy verification remains open.** Drive object verification and transition to permanent_copy_verified are not implemented. |
+| SEC-06 — acknowledgement deletes before permanent copy | ack-snap now records downloaded only and retains the temporary encrypted object. The inbox and Storage read policy both permit the recipient to re-download retained `downloaded` ciphertext until permanent-copy verification exists. | **Dangerous deletion fixed; re-download path hardened in source; full permanent-copy verification remains open.** Drive object verification and transition to permanent_copy_verified are not implemented. |
 | SEC-07 — deployed configuration unverified | No production or non-production project inspection was performed. | **Open — mandatory non-production verification.** |
 | SEC-08 — report access via any common space | Partner policy requires exactly two members and space_type='shared'. | **Source fix added; test required.** |
 | SEC-09 — shared history after disconnection | Detached archive, two participant slots, calendar snapshot mirror, archive read policy, and MFA + typed-confirmation end_shared_connection RPC. Ended archive becomes read-only; membership removal does not delete the archive participant record. | **Source remediation added for shared calendar only; test required.** Shared-space UI now offers typed End Connection and shows read-only status; calendar creation UI becomes read-only. Other shared data types still need integration. |
@@ -25,6 +25,7 @@ This status covers the four additive security migrations and two updated Snap Ed
 - supabase/migrations/202611080003_snap_lifecycle_hardening.sql
 - supabase/migrations/202611080004_report_and_write_limits.sql
 - supabase/migrations/202611080005_trigger_function_privileges.sql
+- supabase/migrations/202611080006_snap_redownload_policy.sql
 - supabase/functions/ack-snap/index.ts
 - supabase/functions/expire-stale-snaps/index.ts
 - app/shared.tsx
@@ -34,7 +35,7 @@ This status covers the four additive security migrations and two updated Snap Ed
 ## Critical behavior changes
 
 1. A recipient acknowledgement no longer removes the only temporary Snap ciphertext. It records download only.
-2. Downloaded Snaps are excluded from the 72-hour offline purge until a permanent independent copy can be verified.
+2. Downloaded Snaps are excluded from the 72-hour offline purge until a permanent independent copy can be verified; the recipient Storage policy also permits re-download while status is `downloaded`.
 3. Expiry eligibility is claimed under database locks after checking current presence, rather than using a stale inactive-member list.
 4. Shared calendar snapshots are copied to a detached archive that does not cascade with the Auth user or live space. End Connection requires an aal2 session and exact END CONNECTION confirmation.
 5. New shared spaces automatically receive an archive container before the owner membership is inserted.
@@ -61,7 +62,7 @@ These are source changes, not verified deployed fixes. The migrations have not y
 6. Verify a heartbeat racing the expiry claim prevents the delivery claim when heartbeat wins the lock.
 7. Verify expiry cleanup retries after Storage failure and never purges downloaded deliveries.
 8. Verify uploading leases can be renewed and expired leases are cleaned safely.
-9. Verify ack-snap marks download only and leaves the ciphertext object and delivery envelope intact.
+9. Verify ack-snap marks download only and leaves the ciphertext object and delivery envelope intact; verify the recipient can re-download it after app-data loss while the delivery remains `downloaded`.
 10. Test invite throttling, device key immutability, report size, report RLS, and text constraints.
 11. Inspect effective grants, RLS policies, Storage policies, SECURITY DEFINER grants, cron, Vault and Edge Function secrets in the test project.
 12. Run two-account and multi-device negative tests for every table and object path.
