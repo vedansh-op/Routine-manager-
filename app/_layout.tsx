@@ -7,7 +7,7 @@ import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
 import { ensureDeviceCryptoKey } from "@/lib/deviceCrypto";
 import * as Notifications from "expo-notifications";
-import { completeReminder, configureNotificationResponseActions, initializeNotificationChannels, snoozeReminder } from "@/lib/notifications";
+import { completeReminder, configureNotificationResponseActions, initializeNotificationChannels, NOTIFICATION_CATEGORIES, NotificationCategory, recordNotificationHistory, snoozeReminder } from "@/lib/notifications";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -43,22 +43,35 @@ function SessionGate() {
         userId?: unknown;
         reminderId?: unknown;
         route?: unknown;
+        category?: unknown;
       };
       if (!user?.id || data.userId !== user.id || typeof data.reminderId !== "string") return;
+      const category: NotificationCategory = NOTIFICATION_CATEGORIES.includes(data.category as NotificationCategory)
+        ? data.category as NotificationCategory
+        : "system";
+      const historyEntry = {
+        reminderId: data.reminderId,
+        category,
+        title: response.notification.request.content.title ?? "ONE-OS reminder",
+        body: response.notification.request.content.body ?? "",
+      };
 
       try {
         if (response.actionIdentifier === "SNOOZE_10") {
           await snoozeReminder(user.id, data.reminderId, 10);
+          await recordNotificationHistory(user.id, { ...historyEntry, event: "snoozed" });
           return;
         }
         if (response.actionIdentifier === "DONE") {
           await completeReminder(user.id, data.reminderId);
+          await recordNotificationHistory(user.id, { ...historyEntry, event: "completed" });
           return;
         }
         if (
           response.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER ||
           response.actionIdentifier === "OPEN"
         ) {
+          await recordNotificationHistory(user.id, { ...historyEntry, event: "opened" });
           const allowedRoutes = ["/", "/tasks", "/habits", "/calendar", "/notifications", "/shared"];
           const target = typeof data.route === "string" && allowedRoutes.includes(data.route)
             ? data.route
@@ -71,6 +84,24 @@ function SessionGate() {
       }
     };
 
+    const receivedSubscription = Notifications.addNotificationReceivedListener(notification => {
+      const data = notification.request.content.data as {
+        userId?: unknown;
+        reminderId?: unknown;
+        category?: unknown;
+      };
+      if (!user?.id || data.userId !== user.id || typeof data.reminderId !== "string") return;
+      const category: NotificationCategory = NOTIFICATION_CATEGORIES.includes(data.category as NotificationCategory)
+        ? data.category as NotificationCategory
+        : "system";
+      void recordNotificationHistory(user.id, {
+        reminderId: data.reminderId,
+        category,
+        title: notification.request.content.title ?? "ONE-OS reminder",
+        body: notification.request.content.body ?? "",
+        event: "received",
+      }).catch(() => undefined);
+    });
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
       void handleResponse(response);
     });
@@ -78,7 +109,10 @@ function SessionGate() {
       .then(response => { if (response) void handleResponse(response); })
       .catch(() => undefined);
 
-    return () => subscription.remove();
+    return () => {
+      receivedSubscription.remove();
+      subscription.remove();
+    };
   }, [user?.id, router]);
 
   const [assuranceReady, setAssuranceReady] = useState(false);
