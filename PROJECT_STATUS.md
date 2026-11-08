@@ -120,7 +120,7 @@ The new schema/archive document describes proposed future metadata concepts. It 
 
 ## CI validation
 
-The latest verified feature-branch CI run passed on commit bf381bf71a99fa425bb5abddf3d44c83b5657566:
+The latest verified feature-branch CI run passed on commit 47eeade84cfb7d045dc096471568dfd1ffb9fc10:
 - TypeScript validation passed.
 - Recovery-state suite: 27 tests passed.
 - Notification-state suite: 6 tests passed.
@@ -128,7 +128,7 @@ The latest verified feature-branch CI run passed on commit bf381bf71a99fa425bb5a
 - Secure session storage suite: 7 tests passed.
 - **Total: 47 automated tests passed across four suites.**
 
-Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42532866305
+Run: https://github.com/vedansh-op/Routine-manager-/actions/runs/42533644210
 
 The TypeScript workflow now runs recovery, notification-state, Snap crypto and secure session storage suites. The Android APK and versioned release workflows also include these regression tests, but the feature-branch commit above is not itself a verified APK artifact. The APK workflow is configured to run on main pushes or manual dispatch; do not infer an APK was built from a green TypeScript job.
 
