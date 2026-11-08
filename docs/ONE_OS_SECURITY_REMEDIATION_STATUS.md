@@ -15,14 +15,16 @@ This status covers the four additive security migrations and two updated Snap Ed
 | SEC-07 — deployed configuration unverified | No production or non-production project inspection was performed. | **Open — mandatory non-production verification.** |
 | SEC-08 — report access via any common space | Partner policy requires exactly two members and space_type='shared'. | **Source fix added; test required.** |
 | SEC-09 — shared history after disconnection | Detached archive, two participant slots, calendar snapshot mirror, archive read policy, and MFA + typed-confirmation end_shared_connection RPC. Ended archive becomes read-only; membership removal does not delete the archive participant record. | **Source remediation added for shared calendar only; test required.** Shared-space UI now offers typed End Connection and shows read-only status; calendar creation UI becomes read-only. Other shared data types still need integration. |
-| SEC-10 — unbounded text / write abuse | Space name 1–80 chars; activity note <=1,000 chars; shared calendar insert rate limited to 100 per user per UTC day. | **Partially fixed.** Per-user/per-space activity rate limits and other future metadata bounds remain. |\n| SEC-11 — excess execution grants on trigger-only SECURITY DEFINER functions | Added an explicit privilege migration revoking EXECUTE from `PUBLIC`, `anon`, and `authenticated` for auth-profile, presence-seeding, archive-mirroring, ended-space guard, and activity-rate trigger functions. | **Source hardening added; verify effective grants and trigger behavior in non-production.** |
+| SEC-10 — unbounded text / write abuse | Space name 1–80 chars; activity note <=1,000 chars; shared calendar insert rate limited to 100 per user per UTC day. | **Partially fixed.** Per-user/per-space activity rate limits and other future metadata bounds remain. |
+| SEC-11 — excess execution grants on trigger-only SECURITY DEFINER functions | Added an explicit privilege migration revoking EXECUTE from `PUBLIC`, `anon`, and `authenticated` for auth-profile, presence-seeding, archive-mirroring, ended-space guard, and activity-rate trigger functions. | **Source hardening added; verify effective grants and trigger behavior in non-production.** |
 
 ## Files added or changed
 
 - supabase/migrations/202611080001_security_remediation.sql
 - supabase/migrations/202611080002_durable_shared_history.sql
 - supabase/migrations/202611080003_snap_lifecycle_hardening.sql
-- supabase/migrations/202611080004_report_and_write_limits.sql\n- supabase/migrations/202611080005_trigger_function_privileges.sql
+- supabase/migrations/202611080004_report_and_write_limits.sql
+- supabase/migrations/202611080005_trigger_function_privileges.sql
 - supabase/functions/ack-snap/index.ts
 - supabase/functions/expire-stale-snaps/index.ts
 - app/shared.tsx
@@ -62,7 +64,8 @@ These are source changes, not verified deployed fixes. The migrations have not y
 9. Verify ack-snap marks download only and leaves the ciphertext object and delivery envelope intact.
 10. Test invite throttling, device key immutability, report size, report RLS, and text constraints.
 11. Inspect effective grants, RLS policies, Storage policies, SECURITY DEFINER grants, cron, Vault and Edge Function secrets in the test project.
-12. Run two-account and multi-device negative tests for every table and object path.\n13. Verify trigger-only SECURITY DEFINER functions cannot be executed by `anon` or `authenticated`, while their database triggers continue to fire normally.
+12. Run two-account and multi-device negative tests for every table and object path.
+13. Verify trigger-only SECURITY DEFINER functions cannot be executed by `anon` or `authenticated`, while their database triggers continue to fire normally.
 
 ## Release decision
 
