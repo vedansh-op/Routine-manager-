@@ -7,8 +7,9 @@
 create or replace function public.require_aal2_for_sensitive_write()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
-as $$
+as $
 declare
   v_role text := coalesce(auth.role(), '');
   v_space_id uuid;
