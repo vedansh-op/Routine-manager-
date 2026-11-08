@@ -5,7 +5,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
 import { ensureDeviceCryptoKey } from "@/lib/deviceCrypto";
 import { getEncryptedItem, initializeUserKeyForFreshInstall, setEncryptedItem } from "@/lib/secureLocalStore";
-import { inspectLegacyDeviceKey, inspectLocalEncryptedData } from "@/lib/keyRecoveryRegistry";
+import { inspectLocalEncryptedData } from "@/lib/keyRecoveryRegistry";
 import { classifyRecoveryBootstrapState } from "@/lib/keyRecoveryState";
 
 export type Task = { id: string; title: string; notes?: string; dueDate?: string; completed: boolean; createdAt: string };
@@ -89,11 +89,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
         // Inspect local keys and ciphertext before any path can create a key or
         // write an empty store. Missing keys beside encrypted data must stop
         // startup and preserve the original files for recovery.
-        const [deviceInspection, dataInventory] = await Promise.all([
-          inspectLegacyDeviceKey(userId),
-          inspectLocalEncryptedData(userId),
-        ]);
-        const bootstrapState = classifyRecoveryBootstrapState(deviceInspection, dataInventory);
+        const dataInventory = await inspectLocalEncryptedData(userId);
+        const bootstrapState = classifyRecoveryBootstrapState(dataInventory);
         if (bootstrapState === "fresh-candidate") {
           await initializeUserKeyForFreshInstall(userId);
         } else if (bootstrapState !== "ready") {
