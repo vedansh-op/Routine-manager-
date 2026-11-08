@@ -9,6 +9,7 @@ This status covers six additive security migrations and two updated Snap Edge Fu
 | SEC-14 — Snap insert boundary | Added a database trigger that rejects Snap deliveries unless the space is a real, active `shared` connection with exactly two distinct members and both sender and recipient belong to it. This protects future elevated insert paths as well as the current RPC. | **Source guard added; test personal spaces, ended spaces, extra members, and valid partner sends in non-production.** |
 | SEC-15 — concurrent shared-space membership | Added a table-level membership trigger that serializes inserts by account and target space, rejects a third member, and prevents one account joining two shared spaces concurrently. This closes the race where two invitees could both observe the final slot as free. | **Source guard added; run simultaneous-join tests in non-production PostgreSQL.** |
 | SEC-16 — shared calendar read scope | Replaced the shared-calendar SELECT policy so membership alone is insufficient: the row must belong to a `space_type='shared'` space. Ended shared connections remain readable as retained history. | **Source policy added; test personal-space isolation and ended-connection history in non-production.** |
+| SEC-17 — Storage policy composition audit | Added a read-only SQL audit that lists every `storage.objects` policy, its permissive/restrictive mode, command, roles, predicates, the Snap bucket configuration, and effective table grants. This is necessary because permissive PostgreSQL policies are OR-combined; an older broad policy can defeat the intended Snap boundary. | **Audit script added; live policy inventory remains unverified until run in a non-production Supabase project.** |
 
 | Finding | Changes now present on branch | Status |
 |---|---|---|
@@ -37,6 +38,7 @@ This status covers six additive security migrations and two updated Snap Edge Fu
 - supabase/migrations/202611080009_require_active_shared_space_for_snaps.sql
 - supabase/migrations/202611080010_serialize_shared_membership.sql
 - supabase/migrations/202611080011_scope_shared_calendar_reads.sql
+- supabase/tests/one_os_storage_policy_audit.sql
 - supabase/functions/ack-snap/index.ts
 - supabase/functions/expire-stale-snaps/index.ts
 - app/shared.tsx
@@ -83,6 +85,7 @@ These are source changes, not verified deployed fixes. The migrations have not y
 16. Attempt Snap inserts through the RPC and a controlled elevated test path for personal, ended, one-member, three-member, wrong-sender, and wrong-recipient cases; only the valid active two-person shared-space case should succeed.
 17. Run two concurrent invite acceptances for one remaining slot; exactly one may join. Also attempt concurrent joins into different shared spaces for the same account; only one may succeed.
 18. Verify a member cannot read `shared_activities` rows attached to a personal space, while both participants can still read retained calendar history after End Connection.
+19. Run `supabase/tests/one_os_storage_policy_audit.sql`; inspect every `storage.objects` policy for broad or overlapping permissive rules, confirm the Snap bucket is private, and review effective grants before accepting the Storage boundary.
 
 ## Release decision
 
