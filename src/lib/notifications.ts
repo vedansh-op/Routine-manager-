@@ -264,6 +264,62 @@ export async function getNotificationPermission() {
   return Notifications.getPermissionsAsync();
 }
 
+export async function reconcileScheduledNotifications(userId: string | null) {
+  const pending = await Notifications.getAllScheduledNotificationsAsync();
+  const owned = new Map<string, Notifications.NotificationRequest>();
+  for (const request of pending) {
+    const data = request.content.data as { userId?: unknown; reminderId?: unknown } | undefined;
+    if (!userId || data?.userId !== userId) {
+      await Notifications.cancelScheduledNotificationAsync(request.identifier).catch(() => undefined);
+      continue;
+    }
+    if (typeof data.reminderId === "string") owned.set(data.reminderId, request);
+  }
+  if (!userId) return;
+
+  const state = await loadState(userId);
+  await ensureNotificationChannels(state.settings);
+  const permission = await Notifications.getPermissionsAsync();
+  let changed = false;
+  for (const reminder of state.reminders) {
+    const existing = owned.get(reminder.id);
+    const shouldSchedule = permission.granted && state.settings.enabled &&
+      state.settings.categoryEnabled[reminder.category] && reminder.enabled && !reminder.completed;
+    if (!shouldSchedule) {
+      if (existing) {
+        await Notifications.cancelScheduledNotificationAsync(existing.identifier).catch(() => undefined);
+        owned.delete(reminder.id);
+      }
+      if (reminder.notificationId !== null) {
+        reminder.notificationId = null;
+        changed = true;
+      }
+      continue;
+    }
+    if (existing) {
+      if (reminder.notificationId !== existing.identifier) {
+        reminder.notificationId = existing.identifier;
+        changed = true;
+      }
+      owned.delete(reminder.id);
+      continue;
+    }
+    try {
+      const nextId = await scheduleNative(userId, reminder, state.settings);
+      if (reminder.notificationId !== nextId) {
+        reminder.notificationId = nextId;
+        changed = true;
+      }
+    } catch {
+      if (reminder.notificationId !== null) {
+        reminder.notificationId = null;
+        changed = true;
+      }
+    }
+  }
+  if (changed) await saveState(userId, state);
+}
+
 export async function getNotificationState(userId: string) {
   const state = await loadState(userId);
   await ensureNotificationChannels(state.settings);
