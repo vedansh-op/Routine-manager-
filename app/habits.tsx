@@ -48,6 +48,13 @@ export default function Habits() {
     });
   }
 
+  async function checkInHabit(habitId: string) {
+    const saved = await toggleHabitToday(habitId);
+    if (!saved) {
+      Alert.alert("Couldn't update habit", storageError ?? "Please try again.");
+    }
+  }
+
   async function saveHabitReminder(habitId: string, hour: number, minute: number) {
     if (!user?.id || !canEdit) return;
     const habit = habits.find(item => item.id === habitId);
@@ -167,7 +174,7 @@ export default function Habits() {
       const chosenDays = daysFor(h.id, h.reminderDays);
       const reminderCount = h.reminderIds?.length ?? (h.reminderId ? 1 : 0);
       return <View key={h.id} style={s.item}>
-        <Pressable disabled={!canEdit} onPress={() => toggleHabitToday(h.id)} style={s.habitToggle}>
+        <Pressable disabled={!canEdit} onPress={() => { void checkInHabit(h.id); }} style={s.habitToggle}>
           <View style={[s.check, done && s.checked]}><Text style={s.tick}>{done ? "✓" : ""}</Text></View>
           <View style={{ flex: 1 }}>
             <Text style={s.task}>{h.title}</Text>
