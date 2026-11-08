@@ -19,6 +19,7 @@ using (
         select k.device_id
         from public.device_crypto_keys k
         where k.user_id = (select auth.uid())
+          and k.revoked_at is null
       )
       and d.status in ('pending', 'downloaded')
   )
