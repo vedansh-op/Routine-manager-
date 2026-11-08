@@ -49,6 +49,7 @@ jobs:
           npm run test:notifications
           npm run test:crypto
           npm run test:session
+          npm run test:database-source
 
       - name: Set app version from release tag
         env:
