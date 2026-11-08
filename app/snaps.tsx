@@ -220,6 +220,8 @@ export default function SnapMemoriesScreen() {
     }
     const expectedUserId = user.id;
     const isCurrentAccount = () => activeUserIdRef.current === expectedUserId;
+    let photoBytes: Uint8Array | null = null;
+    let encryptedPayload: Uint8Array | null = null;
     setBusy(true);
     try {
       await assertActiveSnapUser(expectedUserId);
@@ -236,7 +238,8 @@ export default function SnapMemoriesScreen() {
       if (result.canceled || !result.assets?.[0]) return;
       await assertActiveSnapUser(user.id);
       const asset = result.assets[0];
-      const bytes = await new File(asset.uri).bytes();
+      photoBytes = await new File(asset.uri).bytes();
+      const bytes = photoBytes;
       if (bytes.length < 1 || bytes.length > MAX_PLAINTEXT_BYTES) {
         throw new Error("Choose an image smaller than 20 MB. ONE-OS encrypts it before upload.");
       }
@@ -245,6 +248,7 @@ export default function SnapMemoriesScreen() {
       const capturedAt = captureTimestamp(asset.exif?.DateTimeOriginal);
 
       const envelope = encryptSnap(bytes, partnerPublicKeyHex);
+      encryptedPayload = envelope.ciphertext;
       await assertActiveSnapUser(user.id);
       const { data, error } = await supabase.rpc("create_snap_delivery", {
         p_space_id: spaceId,
@@ -287,6 +291,8 @@ export default function SnapMemoriesScreen() {
     } catch (error) {
       if (isCurrentAccount()) Alert.alert("Couldn't send this snap", error instanceof Error ? error.message : "Please try again.");
     } finally {
+      photoBytes?.fill(0);
+      encryptedPayload?.fill(0);
       if (isCurrentAccount()) setBusy(false);
     }
   }
