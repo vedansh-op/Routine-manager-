@@ -207,7 +207,7 @@ Before migrations, inspect all existing tables, RLS policies, RPCs and Edge Func
 
 The engineering/design documents are prepared and linked below. The phase is not formally signed off until independent cryptographic review and non-production validation are complete.
 
-- [x] Repository/source and checked-in schema inventory — documented for the feature branch; live deployed schema remains unknown.
+- [x] Repository/source and checked-in schema inventory — documented for the feature branch; live deployed schema remains unknown. Final static inventory records 21 source RLS/Storage policies and 23 SECURITY DEFINER functions in ONE_OS_SUPABASE_SECURITY_AUDIT.md.
 - [x] Data ownership matrix — see ONE_OS_PHASE_1_SCHEMA_AND_ARCHIVE_SPEC.md.
 - [x] Threat model — see ONE_OS_PHASE_1_THREAT_MODEL.md.
 - [x] Supabase-vs-Drive boundary — specified; Drive integration itself is not implemented.
@@ -225,9 +225,9 @@ The engineering/design documents are prepared and linked below. The phase is not
 - [ ] Two-account concurrency, MFA/AAL2, Snap lifecycle and archive-retention tests in that project.
 - [ ] Physical Android install/reboot/SecureStore/notification/2-device tests.
 
-The latest verified TypeScript workflow run for the source/test changes is 42533644210 on commit 47eeade84cfb7d045dc096471568dfd1ffb9fc10. It passed TypeScript validation, 27 recovery tests, 6 notification-state tests, 7 Snap crypto tests and 7 secure session-storage tests (47 tests total). This is not PostgreSQL, provider or physical-device evidence.
+The latest verified TypeScript workflow run for the source/test changes is 42534451255 on commit 1bab4deda75f2d345f41b3ad8f2f9c2e2a1532e7. It passed TypeScript validation, 27 recovery tests, 6 notification-state tests, 7 Snap crypto tests and 7 secure session-storage tests (47 tests total). This is not PostgreSQL, provider or physical-device evidence.
 
-The authoritative decision and exact external gates are in ONE_OS_PHASE_1_EXIT_REVIEW.md. No production SQL or service deployment is authorized by completing this document.
+The standalone current-branch debug APK was also built successfully in run 42533640626 and uploaded as artifact ONE-OS-debug-apk; it still needs physical installation/testing. The authoritative decision and exact external gates are in ONE_OS_PHASE_1_EXIT_REVIEW.md. No production SQL or service deployment is authorized by completing this document.
 
 ## 13. Implementation sequence after Phase 1
 
