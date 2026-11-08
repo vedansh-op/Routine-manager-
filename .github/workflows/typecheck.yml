@@ -1,0 +1,63 @@
+name: TypeScript validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "src/**"
+      - "scripts/**"
+      - "package.json"
+      - "tsconfig.json"
+      - ".github/workflows/typecheck.yml"
+  push:
+    branches:
+      - main
+      - phase-1/one-os-architecture-blueprint
+    paths:
+      - "app/**"
+      - "src/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - ".github/workflows/typecheck.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: TypeScript typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run TypeScript validation
+        run: npm run typecheck
+
+      - name: Run recovery-state tests
+        run: npm run test:recovery
+
+      - name: Run notification-state tests
+        run: npm run test:notifications
+
+      - name: Run Snap crypto tests
+        run: npm run test:crypto
+
+      - name: Run secure session storage tests
+        run: npm run test:session
+
+      - name: Run database-source inventory tests
+        run: npm run test:database-source

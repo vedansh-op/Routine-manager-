@@ -30,6 +30,18 @@ Deno.serve(async (request) => {
   const { data: authData, error: authError } = await userClient.auth.getUser();
   if (authError || !authData.user) return Response.json({ error: "Authentication required" }, { status: 401, headers: cors });
 
+  // This Edge Function performs the Snap state update with the service-role
+  // client, so it must independently enforce the caller's verified email and
+  // MFA assurance before crossing that privilege boundary.
+  if (!authData.user.email_confirmed_at) {
+    return Response.json({ error: "Verified email required" }, { status: 403, headers: cors });
+  }
+  const { data: assurance, error: assuranceError } =
+    await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (assuranceError || assurance.currentLevel !== "aal2") {
+    return Response.json({ error: "Multi-factor authentication required" }, { status: 403, headers: cors });
+  }
+
   let body: { deliveryId?: string };
   try { body = await request.json(); } catch { return Response.json({ error: "Invalid JSON" }, { status: 400, headers: cors }); }
   if (!body.deliveryId || !/^[0-9a-f-]{36}$/i.test(body.deliveryId)) {
@@ -38,34 +50,48 @@ Deno.serve(async (request) => {
 
   const { data: delivery, error: readError } = await userClient
     .from("snap_deliveries")
-    .select("id,status,object_path")
+    .select("id,status,object_path,downloaded_at")
     .eq("id", body.deliveryId)
     .eq("recipient_id", authData.user.id)
     .maybeSingle();
 
   if (readError || !delivery) return Response.json({ error: "Snap not found" }, { status: 404, headers: cors });
-  if (delivery.status === "received") return Response.json({ received: true, alreadyAcknowledged: true }, { headers: cors });
+  if (delivery.status === "downloaded" || delivery.status === "permanent_copy_verified" || delivery.status === "received") {
+    return Response.json({
+      downloaded: true,
+      alreadyAcknowledged: true,
+      permanentCopyVerified: delivery.status === "permanent_copy_verified" || delivery.status === "received",
+      temporaryCopyRetained: delivery.status !== "received",
+    }, { headers: cors });
+  }
   if (delivery.status !== "pending" || !delivery.object_path) {
     return Response.json({ error: "Snap is not ready to acknowledge" }, { status: 409, headers: cors });
   }
 
-  const { error: removeError } = await admin.storage
-    .from("oneos-private-snaps")
-    .remove([delivery.object_path]);
-
-  // Storage removal is performed before clearing the key envelope. If removal fails,
-  // the recipient can retry and the server does not falsely claim the cloud copy is gone.
-  const isMissingObject = removeError && String(removeError.statusCode) === "404";
-  if (removeError && !isMissingObject) {
-    return Response.json({ error: "Could not remove the cloud copy", detail: removeError.message }, { status: 502, headers: cors });
-  }
-
-  const { error: deleteError } = await admin.from("snap_deliveries")
-    .delete()
+  // This endpoint records that the recipient completed the download step only.
+  // It deliberately does not delete the ciphertext or claim a permanent Drive copy.
+  const { data: updated, error: updateError } = await admin
+    .from("snap_deliveries")
+    .update({ status: "downloaded", downloaded_at: new Date().toISOString() })
     .eq("id", delivery.id)
     .eq("recipient_id", authData.user.id)
-    .eq("status", "pending");
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
 
-  if (deleteError) return Response.json({ error: "Cloud file removed but delivery metadata could not be cleared", detail: deleteError.message }, { status: 502, headers: cors });
-  return Response.json({ received: true, metadataCleared: true }, { headers: cors });
+  if (updateError) return Response.json({ error: "Could not record download receipt" }, { status: 502, headers: cors });
+  if (!updated) {
+    const { data: current } = await admin.from("snap_deliveries")
+      .select("status").eq("id", delivery.id).maybeSingle();
+    if (current?.status !== "downloaded" && current?.status !== "permanent_copy_verified" && current?.status !== "received") {
+      return Response.json({ error: "Snap state changed; retry safely" }, { status: 409, headers: cors });
+    }
+  }
+
+  return Response.json({
+    downloaded: true,
+    permanentCopyVerified: false,
+    temporaryCopyRetained: true,
+    message: "Download recorded. The temporary encrypted copy remains until an independent permanent copy can be verified.",
+  }, { headers: cors });
 });

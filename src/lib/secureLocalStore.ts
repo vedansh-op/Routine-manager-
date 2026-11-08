@@ -28,27 +28,58 @@ function decodeUtf8(value: Uint8Array): string {
   return decodeURIComponent(encoded);
 }
 
-async function createUserKey(userId: string): Promise<Uint8Array> {
-  const alias = KEY_PREFIX + userId;
-  let keyHex = await SecureStore.getItemAsync(alias);
-  if (!keyHex) {
-    keyHex = toHex(getRandomBytes(32));
-    await SecureStore.setItemAsync(alias, keyHex, {
-      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
-    });
+async function readUserKey(userId: string): Promise<Uint8Array> {
+  const keyHex = await SecureStore.getItemAsync(KEY_PREFIX + userId);
+  if (keyHex === null) {
+    throw new Error("The local encryption key is missing. Existing encrypted data is preserved; recovery is required.");
   }
   const key = fromHex(keyHex);
   if (key.length !== 32) throw new Error("The local encryption key is invalid.");
   return key;
 }
 
+/**
+ * Creates a data key only when an explicit, read-only recovery bootstrap has
+ * established that no existing encrypted local data depends on a missing key.
+ * Concurrent startup effects share one initialization attempt.
+ */
+const keyInitializations = new Map<string, Promise<void>>();
+
+export function initializeUserKeyForFreshInstall(userId: string): Promise<void> {
+  const active = keyInitializations.get(userId);
+  if (active) return active;
+
+  const pending = (async () => {
+    const alias = KEY_PREFIX + userId;
+    const existing = await SecureStore.getItemAsync(alias);
+    if (existing !== null) {
+      const key = fromHex(existing);
+      if (key.length !== 32) throw new Error("The local encryption key is invalid.");
+      return;
+    }
+    const generated = toHex(getRandomBytes(32));
+    await SecureStore.setItemAsync(alias, generated, {
+      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    });
+    const confirmed = await SecureStore.getItemAsync(alias);
+    if (confirmed !== generated) {
+      throw new Error("The new local encryption key could not be verified.");
+    }
+  })().finally(() => {
+    if (keyInitializations.get(userId) === pending) keyInitializations.delete(userId);
+  });
+
+  keyInitializations.set(userId, pending);
+  return pending;
+}
+
 const userKeyLoads = new Map<string, Promise<Uint8Array>>();
 
-/** Coalesces parallel first-run reads so the task store and photo vault cannot create different keys. */
+/** Coalesces parallel reads of an already initialized key; reads never create key material. */
 function getUserKey(userId: string): Promise<Uint8Array> {
   const active = userKeyLoads.get(userId);
   if (active) return active;
-  const pending = createUserKey(userId).finally(() => {
+  const pending = readUserKey(userId).finally(() => {
     if (userKeyLoads.get(userId) === pending) userKeyLoads.delete(userId);
   });
   userKeyLoads.set(userId, pending);
@@ -68,8 +99,16 @@ export async function getEncryptedItem(storageKey: string, userId: string): Prom
   const nonce = fromHex(parts[0]);
   if (nonce.length !== 24) throw new Error("Encrypted local data has an invalid nonce.");
   const key = await getUserKey(userId);
-  const plaintext = xchacha20poly1305(key, nonce).decrypt(fromHex(parts[1]));
-  return decodeUtf8(plaintext);
+  const ciphertext = fromHex(parts[1]);
+  let plaintext: Uint8Array | null = null;
+  try {
+    plaintext = xchacha20poly1305(key, nonce).decrypt(ciphertext);
+    return decodeUtf8(plaintext);
+  } finally {
+    nonce.fill(0);
+    ciphertext.fill(0);
+    plaintext?.fill(0);
+  }
 }
 
 export async function setEncryptedItem(storageKey: string, userId: string, value: string): Promise<void> {
@@ -77,8 +116,16 @@ export async function setEncryptedItem(storageKey: string, userId: string, value
   const next = previous.catch(() => undefined).then(async () => {
     const key = await getUserKey(userId);
     const nonce = getRandomBytes(24);
-    const ciphertext = xchacha20poly1305(key, nonce).encrypt(encodeUtf8(value));
-    await AsyncStorage.setItem(storageKey, ENCRYPTED_PREFIX + toHex(nonce) + ":" + toHex(ciphertext));
+    const plaintext = encodeUtf8(value);
+    let ciphertext: Uint8Array | null = null;
+    try {
+      ciphertext = xchacha20poly1305(key, nonce).encrypt(plaintext);
+      await AsyncStorage.setItem(storageKey, ENCRYPTED_PREFIX + toHex(nonce) + ":" + toHex(ciphertext));
+    } finally {
+      nonce.fill(0);
+      plaintext.fill(0);
+      ciphertext?.fill(0);
+    }
   });
   writeQueues.set(storageKey, next);
   try {
@@ -93,17 +140,28 @@ export async function setEncryptedItem(storageKey: string, userId: string, value
 export async function encryptLocalBytes(userId: string, plaintext: Uint8Array): Promise<Uint8Array> {
   const key = await getUserKey(userId);
   const nonce = getRandomBytes(24);
-  const ciphertext = xchacha20poly1305(key, nonce).encrypt(plaintext);
-  const packed = new Uint8Array(nonce.length + ciphertext.length);
-  packed.set(nonce, 0);
-  packed.set(ciphertext, nonce.length);
-  return packed;
+  let ciphertext: Uint8Array | null = null;
+  try {
+    ciphertext = xchacha20poly1305(key, nonce).encrypt(plaintext);
+    const packed = new Uint8Array(nonce.length + ciphertext.length);
+    packed.set(nonce, 0);
+    packed.set(ciphertext, nonce.length);
+    return packed;
+  } finally {
+    nonce.fill(0);
+    ciphertext?.fill(0);
+  }
 }
 
 export async function decryptLocalBytes(userId: string, packed: Uint8Array): Promise<Uint8Array> {
   if (packed.length < 40) throw new Error("The saved photo file is incomplete.");
   const nonce = packed.slice(0, 24);
   const ciphertext = packed.slice(24);
-  const key = await getUserKey(userId);
-  return xchacha20poly1305(key, nonce).decrypt(ciphertext);
+  try {
+    const key = await getUserKey(userId);
+    return xchacha20poly1305(key, nonce).decrypt(ciphertext);
+  } finally {
+    nonce.fill(0);
+    ciphertext.fill(0);
+  }
 }

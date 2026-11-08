@@ -17,7 +17,8 @@
           "cameraPermission": "ONE-OS uses the camera only when you choose to capture a private memory.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "android": {
       "package": "com.vedansh.oneos",

@@ -13,8 +13,12 @@ type AuthContextValue = {
 };
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function acceptAuthUrl(url: string, setRecovery: (value: boolean) => void) {
-  if (!supabase) return;
+async function acceptAuthUrl(
+  url: string,
+  setRecovery: (value: boolean) => void,
+  shouldContinue: () => boolean,
+) {
+  if (!supabase || !shouldContinue()) return;
   try {
     const parsed = new URL(url);
     const query = new URLSearchParams(parsed.search);
@@ -22,18 +26,21 @@ async function acceptAuthUrl(url: string, setRecovery: (value: boolean) => void)
     const accessToken = hash.get("access_token") ?? query.get("access_token");
     const refreshToken = hash.get("refresh_token") ?? query.get("refresh_token");
     const code = query.get("code");
-    const type = hash.get("type") ?? query.get("type");
-    if (type === "recovery") setRecovery(true);
+    const isRecovery = (hash.get("type") ?? query.get("type")) === "recovery";
     // Supabase PKCE links return a one-time code; implicit-flow links return tokens.
+    // Do not enter recovery mode until Supabase has accepted the credentials.
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(code);
       if (error) throw error;
     } else if (accessToken && refreshToken) {
       const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
       if (error) throw error;
+    } else {
+      return;
     }
+    if (isRecovery && shouldContinue()) setRecovery(true);
   } catch {
-    // Ignore unrelated or malformed deep links.
+    // Ignore unrelated, expired, or malformed deep links.
   }
 }
 
@@ -48,19 +55,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     let alive = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (alive) setSession(data.session);
+    let receivedAuthEvent = false;
+    // Subscribe before reading the persisted session. If sign-in/sign-out fires
+    // while getSession is pending, its newer event must win over the snapshot.
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      receivedAuthEvent = true;
+      if (alive) {
+        setSession(nextSession);
+        // A signed-out account must never inherit a previous account's
+        // password-recovery mode.
+        if (_event === "SIGNED_OUT") setRecovery(false);
+        setLoading(false);
+      }
+    });
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) throw error;
+      if (alive && !receivedAuthEvent) setSession(data.session);
+    }).catch(() => {
+      // Keep the current auth-event session (or signed-out state) on read failure.
     }).finally(() => {
       if (alive) setLoading(false);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-    });
     Linking.getInitialURL().then(url => {
-      if (url) void acceptAuthUrl(url, setRecovery);
+      if (url) void acceptAuthUrl(url, setRecovery, () => alive);
     });
     const linkListener = Linking.addEventListener("url", ({ url }) => {
-      void acceptAuthUrl(url, setRecovery);
+      void acceptAuthUrl(url, setRecovery, () => alive);
     });
     return () => {
       alive = false;

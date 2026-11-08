@@ -24,77 +24,48 @@ Deno.serve(async (request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-  const abandonedUploadCutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { data: inactive, error: presenceError } = await admin
-    .from("member_presence")
-    .select("space_id,user_id")
-    .lt("last_seen_at", cutoff);
 
-  if (presenceError) return Response.json({ error: presenceError.message }, { status: 500 });
+  // Claim under a DB transaction that locks and rechecks live presence. This
+  // replaces the old list-inactive-then-delete race.
+  const { data: claims, error: claimError } = await admin.rpc("claim_expired_snap_deliveries", {
+    p_cutoff: cutoff,
+    p_batch_size: 100,
+  });
+  if (claimError) return Response.json({ error: "Could not claim expiry batch", detail: claimError.message }, { status: 500 });
 
   let deletedDeliveries = 0;
   let deletedObjects = 0;
   const failures: string[] = [];
-  const processed = new Set<string>();
 
-  async function purge(delivery: { id: string; object_path: string | null }, reason: string) {
-    if (processed.has(delivery.id)) return;
-    processed.add(delivery.id);
-
-    if (delivery.object_path) {
-      const { error: removeError } = await admin.storage
-        .from("oneos-private-snaps")
-        .remove([delivery.object_path]);
-      const isMissingObject = removeError && String(removeError.statusCode) === "404";
-      if (removeError && !isMissingObject) {
-        failures.push(`Storage cleanup failed for ${delivery.id} (${reason}): ${removeError.message}`);
-        return;
+  for (const item of claims ?? []) {
+    let storageDeleted = false;
+    if (item.object_path) {
+      const { error } = await admin.storage.from("oneos-private-snaps").remove([item.object_path]);
+      const missing = error && String(error.statusCode) === "404";
+      if (error && !missing) {
+        failures.push(`Storage cleanup failed for ${item.delivery_id}: ${error.message}`);
+      } else {
+        storageDeleted = true;
+        if (!missing) deletedObjects++;
       }
-      if (!removeError) deletedObjects++;
+    } else {
+      storageDeleted = true;
     }
 
-    const { error: deleteError } = await admin
-      .from("snap_deliveries")
-      .delete()
-      .eq("id", delivery.id);
-    if (deleteError) failures.push(`Metadata cleanup failed for ${delivery.id} (${reason}): ${deleteError.message}`);
-    else deletedDeliveries++;
-  }
-
-  // A recipient who has been offline for 72 hours loses only their pending deliveries.
-  for (const member of inactive ?? []) {
-    const { data: deliveries, error: deliveryError } = await admin
-      .from("snap_deliveries")
-      .select("id,object_path")
-      .eq("space_id", member.space_id)
-      .eq("recipient_id", member.user_id)
-      .eq("status", "pending");
-
-    if (deliveryError) {
-      failures.push(deliveryError.message);
-      continue;
-    }
-    for (const delivery of deliveries ?? []) await purge(delivery, "recipient inactive for 72 hours");
-  }
-
-  // An unfinished upload is an orphan candidate after one hour, regardless of recipient presence.
-  const { data: abandonedUploads, error: uploadError } = await admin
-    .from("snap_deliveries")
-    .select("id,object_path")
-    .eq("status", "uploading")
-    .lt("created_at", abandonedUploadCutoff);
-
-  if (uploadError) failures.push(uploadError.message);
-  else {
-    for (const delivery of abandonedUploads ?? []) await purge(delivery, "upload unfinished for one hour");
+    const { error: finishError } = await admin.rpc("finish_snap_expiry", {
+      p_delivery_id: item.delivery_id,
+      p_storage_deleted: storageDeleted,
+    });
+    if (finishError) failures.push(`Expiry finalization failed for ${item.delivery_id}: ${finishError.message}`);
+    else if (storageDeleted) deletedDeliveries++;
   }
 
   return Response.json({
     inactiveCutoff: cutoff,
-    abandonedUploadCutoff,
-    inactiveMembersChecked: inactive?.length ?? 0,
+    claimed: claims?.length ?? 0,
     deletedObjects,
     deletedDeliveries,
     failures,
+    note: "Downloaded items are not expired. They remain until permanent-copy verification is implemented.",
   }, { status: failures.length ? 207 : 200 });
 });

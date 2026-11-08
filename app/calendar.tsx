@@ -4,6 +4,8 @@ import { useRouter } from "expo-router";
 import { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/auth/AuthProvider";
+import { useAppStore } from "@/store/AppStore";
+import { cancelReminder, getNotificationPermission, getNotificationState, scheduleReminder } from "@/lib/notifications";
 import {
   DEFAULT_PARTNER_TIME_ZONE,
   formatInTimeZone,
@@ -37,12 +39,14 @@ function dateKey(year: number, month: number, day: number) {
 export default function ActivityCalendarScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { canEdit } = useAppStore();
   const zone = getDeviceTimeZone();
   const now = new Date();
   const [month, setMonth] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(() => getDateKeyInTimeZone(now, zone));
   const [selectedInstant, setSelectedInstant] = useState(() => new Date());
   const [spaceId, setSpaceId] = useState<string | null>(null);
+  const [connectionEnded, setConnectionEnded] = useState(false);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
@@ -56,8 +60,13 @@ export default function ActivityCalendarScreen() {
       const { data: membership, error: memberError } = await supabase
         .from("space_members").select("space_id").eq("user_id", user.id).limit(1).maybeSingle();
       if (memberError) throw memberError;
-      if (!membership?.space_id) { setSpaceId(null); setActivities([]); return; }
+      if (!membership?.space_id) { setSpaceId(null); setActivities([]); setConnectionEnded(false); return; }
       setSpaceId(membership.space_id);
+      const { data: archive, error: archiveError } = await supabase
+        .from("shared_archives").select("ended_at")
+        .eq("source_space_id", membership.space_id).maybeSingle();
+      if (archiveError) throw archiveError;
+      setConnectionEnded(Boolean(archive?.ended_at));
       const { data, error } = await supabase.from("shared_activities")
         .select("id,title,note,starts_at,timezone,created_by")
         .eq("space_id", membership.space_id).order("starts_at", { ascending: true });
@@ -69,6 +78,62 @@ export default function ActivityCalendarScreen() {
   }, [user]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const syncLocalCalendarAlerts = async () => {
+      if (!user?.id || !canEdit) return;
+      try {
+        const [permission, notificationState] = await Promise.all([
+          getNotificationPermission(),
+          getNotificationState(user.id),
+        ]);
+        if (cancelled) return;
+        const now = Date.now();
+        const leadMinutes = notificationState.settings.calendarLeadMinutes;
+        const horizon = now + 30 * 24 * 60 * 60 * 1000;
+        const upcoming = activities
+          .filter(item => {
+            const startsAt = new Date(item.starts_at).getTime();
+            return Number.isFinite(startsAt) && startsAt > now + 30_000 && startsAt <= horizon;
+          })
+          .slice(0, 40);
+        const desiredKeys = new Set(upcoming.map(item => "calendar:" + item.id));
+        const stale = notificationState.reminders.filter(item =>
+          item.category === "calendar" &&
+          item.sourceKey?.startsWith("calendar:") &&
+          !desiredKeys.has(item.sourceKey),
+        );
+        for (const reminder of stale) {
+          if (cancelled) return;
+          await cancelReminder(user.id, reminder.id);
+        }
+        if (!permission.granted) return;
+        for (const item of upcoming) {
+          if (cancelled) return;
+          const startsAt = new Date(item.starts_at).getTime();
+          const alertAt = Math.max(now + 30_000, startsAt - leadMinutes * 60_000);
+          try {
+            await scheduleReminder(user.id, {
+              category: "calendar",
+              title: item.title,
+              body: "Your shared calendar event starts soon.",
+              route: "/calendar",
+              sourceKey: "calendar:" + item.id,
+              repeat: { kind: "once", date: new Date(alertAt).toISOString() },
+            });
+          } catch {
+            // Calendar browsing must continue even when reminders are disabled,
+            // permission is denied, or an individual event is not schedulable.
+          }
+        }
+      } catch {
+        // The calendar remains usable when notification services are unavailable.
+      }
+    };
+    void syncLocalCalendarAlerts();
+    return () => { cancelled = true; };
+  }, [activities, user?.id, canEdit]);
 
   const cells = useMemo(() => monthCells(month.getFullYear(), month.getMonth()), [month]);
   const activityDates = useMemo(() => new Set(activities.map(item => getDateKeyInTimeZone(new Date(item.starts_at), zone))), [activities, zone]);
@@ -182,7 +247,7 @@ export default function ActivityCalendarScreen() {
           </View>
         </View>) : <Text style={s.muted}>No shared activities on this date yet.</Text>}
       </View>
-      <View style={s.card}>
+      {!connectionEnded ? <View style={s.card}>
         <Text style={s.cardTitle}>Add a shared moment</Text>
         <Text style={s.muted}>Choose a date and time in your phone's timezone. ONE-OS stores one UTC instant and converts it for your partner automatically.</Text>
         <View style={s.schedulePanel}>
@@ -206,7 +271,7 @@ export default function ActivityCalendarScreen() {
         <Pressable disabled={saving || loading} onPress={() => void addMoment()} style={[s.primary, (saving || loading) && s.disabled]}>
           {saving ? <ActivityIndicator color="#101216" /> : <Text style={s.primaryText}>Add to our calendar</Text>}
         </Pressable>
-      </View>
+      </View> : <View style={s.card}><Text style={s.cardTitle}>Read-only shared history</Text><Text style={s.muted}>This connection has ended. Existing calendar moments remain available to both people, but no new shared moments can be added.</Text></View>}
     </>}
     <Text style={s.footer}>Only activities intentionally added here are stored in the shared cloud space. Private tasks and habits stay on each phone.</Text>
   </ScrollView>;

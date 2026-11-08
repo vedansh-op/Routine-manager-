@@ -1,0 +1,124 @@
+name: Publish ONE-OS Android release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-os-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build APK and publish versioned release
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release version
+        id: version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag must look like v1.2.3 (optionally with a prerelease suffix)." >&2
+            exit 1
+          fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate TypeScript and local regression tests
+        run: |
+          npx tsc --noEmit
+          npm run test:recovery
+          npm run test:notifications
+          npm run test:crypto
+          npm run test:session
+          npm run test:database-source
+
+      - name: Set app version from release tag
+        env:
+          APP_VERSION: ${{ steps.version.outputs.value }}
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const file = "app.json";
+          const config = JSON.parse(fs.readFileSync(file, "utf8"));
+          config.expo.version = process.env.APP_VERSION;
+          config.expo.android = config.expo.android || {};
+          config.expo.android.versionCode = Number(process.env.ANDROID_VERSION_CODE);
+          fs.writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
+          NODE
+
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --non-interactive
+
+      - name: Enable JavaScript bundling in the standalone debug variant
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = "android/app/build.gradle";
+          let gradle = fs.readFileSync(path, "utf8");
+          if (!/react\s*\{/.test(gradle)) {
+            throw new Error("Could not find the React Native Gradle configuration block.");
+          }
+          if (!/react\s*\{\s*debuggableVariants\s*=\s*\[\s*\]/.test(gradle)) {
+            gradle = gradle.replace(/react\s*\{/, match => match + "\n    debuggableVariants = []");
+          }
+          fs.writeFileSync(path, gradle);
+          NODE
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Build standalone Android APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Verify APK and create checksum
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          mkdir -p dist
+          APK="dist/ONE-OS-v${VERSION}-android-debug.apk"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$APK"
+          test -s "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+          cat "$APK.sha256"
+
+      - name: Archive release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: ONE-OS-${{ steps.version.outputs.value }}-release-files
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ONE-OS v${{ steps.version.outputs.value }}
+          generate_release_notes: true
+          make_latest: true
+          files: dist/*

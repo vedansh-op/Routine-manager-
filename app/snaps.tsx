@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator, Alert, AppState, Image, Modal, Pressable,
   ScrollView, StyleSheet, Text, View,
@@ -21,7 +21,7 @@ type PendingSnap = {
   recipient_id: string;
   recipient_device_id: string;
   object_path: string;
-  status: "uploading" | "pending" | "received";
+  status: "uploading" | "pending" | "downloaded" | "permanent_copy_verified" | "received" | "expiring";
   ephemeral_public_key: string;
   wrap_salt: string;
   wrap_nonce: string;
@@ -34,6 +34,22 @@ type PendingSnap = {
 
 const MAX_CIPHERTEXT_BYTES = 20 * 1024 * 1024;
 const MAX_PLAINTEXT_BYTES = MAX_CIPHERTEXT_BYTES - 16;
+
+/** Stop an in-flight Snap action if sign-out, account switching, or MFA downgrade occurs. */
+async function assertActiveSnapUser(expectedUserId: string): Promise<void> {
+  if (!supabase) throw new Error("Connect Supabase before sharing private photos.");
+  const { data: identity, error: identityError } = await supabase.auth.getUser();
+  if (identityError) throw identityError;
+  if (identity.user?.id !== expectedUserId) {
+    throw new Error("Your account changed. Reopen Private Memories before continuing.");
+  }
+  const { data: assurance, error: assuranceError } =
+    await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (assuranceError) throw assuranceError;
+  if (assurance.currentLevel !== "aal2") {
+    throw new Error("Complete multi-factor authentication before sharing private photos.");
+  }
+}
 
 function localDateKey(date: Date): string {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
@@ -81,21 +97,39 @@ export default function SnapMemoriesScreen() {
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [selectedMemoryDate, setSelectedMemoryDate] = useState(() => localDateKey(new Date()));
 
-  const refresh = useCallback(async () => {
-    if (!user) { setLoading(false); return; }
-    setLoading(true);
-    try {
-      // Load the encrypted on-device gallery first. It remains usable even if
-      // the network or Supabase is unavailable; remote sync is a separate step.
-      const snaps = await getLocalSnaps(user.id);
-      setLocalSnaps(snaps);
-      setDeviceKey(null);
+  const activeUserIdRef = useRef<string | null>(user?.id ?? null);
+  useEffect(() => {
+    activeUserIdRef.current = user?.id ?? null;
+  }, [user?.id]);
 
-      if (!supabase) {
-        setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPartnerTrusted(false); setPartnerKeyChanged(false); setPartnerFingerprint(""); setPartnerDeviceId(null); setPartnerPublicKeyHex(null); setPending([]);
-        return;
-      }
+  const refreshGeneration = useRef(0);
+  const refresh = useCallback(async () => {
+    const generation = ++refreshGeneration.current;
+    const expectedUserId = user?.id ?? null;
+    const isCurrent = () =>
+      refreshGeneration.current === generation && (user?.id ?? null) === expectedUserId;
+    if (!user) {
+      setLocalSnaps([]); setPending([]); setDeviceKey(null); setSpaceId(null);
+      setPartnerId(null); setPartnerReady(false); setPartnerTrusted(false);
+      setPartnerKeyChanged(false); setPartnerFingerprint(""); setPartnerDeviceId(null);
+      setPartnerPublicKeyHex(null); setLoading(false);
+      return;
+    }
+    setLoading(true);
+    // Never leave the previous account's private metadata visible while this
+    // account's data is loading.
+    setLocalSnaps([]); setPending([]); setDeviceKey(null); setSpaceId(null);
+    setPartnerId(null); setPartnerReady(false); setPartnerTrusted(false);
+    setPartnerKeyChanged(false); setPartnerFingerprint(""); setPartnerDeviceId(null);
+    setPartnerPublicKeyHex(null);
+    try {
+      const snaps = await getLocalSnaps(user.id);
+      if (!isCurrent()) return;
+      setLocalSnaps(snaps);
+
+      if (!supabase) return;
       const key = await ensureDeviceCryptoKey(user.id);
+      if (!isCurrent()) return;
       setDeviceKey(key);
       const { data: membership, error: memberError } = await supabase
         .from("space_members")
@@ -103,13 +137,13 @@ export default function SnapMemoriesScreen() {
         .eq("user_id", user.id)
         .limit(1)
         .maybeSingle();
+      if (!isCurrent()) return;
       if (memberError) throw memberError;
-      if (!membership?.space_id) {
-        setSpaceId(null); setPartnerId(null); setPartnerReady(false); setPartnerTrusted(false); setPartnerKeyChanged(false); setPartnerFingerprint(""); setPartnerDeviceId(null); setPartnerPublicKeyHex(null); setPending([]);
-        return;
-      }
+      if (!membership?.space_id) return;
       setSpaceId(membership.space_id);
+
       const partner = await getPartnerPublicKey(membership.space_id, user.id);
+      if (!isCurrent()) return;
       setPartnerId(partner?.userId ?? null);
       setPartnerDeviceId(partner?.deviceId ?? null);
       setPartnerPublicKeyHex(partner?.publicKeyHex ?? null);
@@ -117,13 +151,12 @@ export default function SnapMemoriesScreen() {
       setPartnerReady(hasPartnerKey);
       if (partner?.publicKeyHex) {
         const pinned = await getPinnedPartnerPublicKey(user.id, membership.space_id);
+        if (!isCurrent()) return;
         setPartnerTrusted(pinned === partner.publicKeyHex);
         setPartnerKeyChanged(Boolean(pinned && pinned !== partner.publicKeyHex));
         setPartnerFingerprint(partnerKeyFingerprint(key.secretKey, partner.publicKeyHex));
       } else {
-        setPartnerTrusted(false);
-        setPartnerKeyChanged(false);
-        setPartnerFingerprint("");
+        setPartnerTrusted(false); setPartnerKeyChanged(false); setPartnerFingerprint("");
       }
 
       const { data, error } = await supabase
@@ -131,16 +164,22 @@ export default function SnapMemoriesScreen() {
         .select("id,space_id,sender_id,recipient_id,object_path,status,ephemeral_public_key,wrap_salt,wrap_nonce,wrapped_file_key,content_nonce,mime_type,file_size_bytes,captured_at")
         .eq("recipient_id", user.id)
         .eq("recipient_device_id", key.deviceId)
-        .eq("status", "pending")
+        .in("status", ["pending", "downloaded"])
         .order("created_at", { ascending: true });
+      if (!isCurrent()) return;
       if (error) throw error;
       setPending((data ?? []) as PendingSnap[]);
     } catch (error) {
-      Alert.alert("Couldn't refresh memories", error instanceof Error ? error.message : "Please try again.");
-    } finally { setLoading(false); }
+      if (isCurrent()) Alert.alert("Couldn't refresh memories", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      if (isCurrent()) setLoading(false);
+    }
   }, [user]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+    return () => { refreshGeneration.current += 1; };
+  }, [refresh]);
   useEffect(() => {
     const sub = AppState.addEventListener("change", state => {
       if (state === "active") void refresh();
@@ -179,8 +218,13 @@ export default function SnapMemoriesScreen() {
       Alert.alert("Ask your partner to open ONE-OS", "Their device needs to register its private photo-receiving key once. They can open this screen while signed in.");
       return;
     }
+    const expectedUserId = user.id;
+    const isCurrentAccount = () => activeUserIdRef.current === expectedUserId;
+    let photoBytes: Uint8Array | null = null;
+    let encryptedPayload: Uint8Array | null = null;
     setBusy(true);
     try {
+      await assertActiveSnapUser(expectedUserId);
       let result: ImagePicker.ImagePickerResult;
       if (source === "camera") {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -192,8 +236,10 @@ export default function SnapMemoriesScreen() {
         result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.82, allowsEditing: false, exif: true });
       }
       if (result.canceled || !result.assets?.[0]) return;
+      await assertActiveSnapUser(user.id);
       const asset = result.assets[0];
-      const bytes = await new File(asset.uri).bytes();
+      photoBytes = await new File(asset.uri).bytes();
+      const bytes = photoBytes;
       if (bytes.length < 1 || bytes.length > MAX_PLAINTEXT_BYTES) {
         throw new Error("Choose an image smaller than 20 MB. ONE-OS encrypts it before upload.");
       }
@@ -202,6 +248,8 @@ export default function SnapMemoriesScreen() {
       const capturedAt = captureTimestamp(asset.exif?.DateTimeOriginal);
 
       const envelope = encryptSnap(bytes, partnerPublicKeyHex);
+      encryptedPayload = envelope.ciphertext;
+      await assertActiveSnapUser(user.id);
       const { data, error } = await supabase.rpc("create_snap_delivery", {
         p_space_id: spaceId,
         p_recipient_id: partnerId,
@@ -219,6 +267,7 @@ export default function SnapMemoriesScreen() {
       const created = Array.isArray(data) ? data[0] : data;
       if (!created?.delivery_id || !created?.object_path) throw new Error("The server did not create the encrypted delivery.");
 
+      await assertActiveSnapUser(user.id);
       const { error: uploadError } = await supabase.storage
         .from("oneos-private-snaps")
         .upload(created.object_path, envelope.ciphertext.buffer as ArrayBuffer, {
@@ -229,73 +278,93 @@ export default function SnapMemoriesScreen() {
 
       // Keep a private encrypted copy on the sender's device before finalizing delivery.
       const senderCopy = await saveLocalSnap(user.id, created.delivery_id, mimeType, capturedAt, "sent", bytes, created.delivery_id);
+      await assertActiveSnapUser(user.id);
       setLocalSnaps(old => [senderCopy, ...old.filter(snap => snap.id !== senderCopy.id)]);
 
+      await assertActiveSnapUser(user.id);
       const { error: finalizeError } = await supabase.rpc("finalize_snap_upload", {
         p_delivery_id: created.delivery_id,
       });
       if (finalizeError) throw finalizeError;
 
-      await refresh();
       Alert.alert("Encrypted snap sent", "Your photo is saved privately on this phone. Your partner can receive it when they open ONE-OS.");
     } catch (error) {
-      Alert.alert("Couldn't send this snap", error instanceof Error ? error.message : "Please try again.");
-    } finally { setBusy(false); }
+      if (isCurrentAccount()) Alert.alert("Couldn't send this snap", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      photoBytes?.fill(0);
+      encryptedPayload?.fill(0);
+      if (isCurrentAccount()) setBusy(false);
+    }
   }
 
   async function receiveSnap(item: PendingSnap) {
     if (!user || !supabase || !deviceKey) return;
+    const expectedUserId = user.id;
+    const isCurrentAccount = () => activeUserIdRef.current === expectedUserId;
     setReceivingId(item.id);
     try {
+      await assertActiveSnapUser(user.id);
       // Re-read the durable vault on every attempt. React state may be stale after an
       // earlier download succeeded but the cloud acknowledgement failed.
       const savedSnaps = await getLocalSnaps(user.id);
+      await assertActiveSnapUser(user.id);
       let existing = savedSnaps.find(local => local.deliveryId === item.id || local.id === item.id);
       if (existing) {
         await readLocalSnap(user.id, existing);
+        await assertActiveSnapUser(user.id);
         setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
       } else {
         if (!item.object_path || !item.ephemeral_public_key || !item.wrap_salt || !item.wrap_nonce || !item.wrapped_file_key || !item.content_nonce) {
           throw new Error("This delivery is missing its encryption envelope.");
         }
+        await assertActiveSnapUser(user.id);
         const { data: blob, error: downloadError } = await supabase.storage
           .from("oneos-private-snaps")
           .download(item.object_path);
         if (downloadError || !blob) throw downloadError ?? new Error("The encrypted photo is unavailable.");
+        await assertActiveSnapUser(user.id);
         const ciphertext = new Uint8Array(await blob.arrayBuffer());
-        const plaintext = decryptSnap(ciphertext, {
-          ephemeralPublicKey: item.ephemeral_public_key,
-          wrapSalt: item.wrap_salt,
-          wrapNonce: item.wrap_nonce,
-          wrappedFileKey: item.wrapped_file_key,
-          contentNonce: item.content_nonce,
-        }, deviceKey.secretKey);
-
-        // The cloud copy is acknowledged only after successful local encryption and index write.
-        existing = await saveLocalSnap(
-          user.id, item.id, item.mime_type, item.captured_at, "received", plaintext, item.id,
-        );
-        plaintext.fill(0);
+        await assertActiveSnapUser(user.id);
+        let plaintext: Uint8Array | null = null;
+        try {
+          plaintext = decryptSnap(ciphertext, {
+            ephemeralPublicKey: item.ephemeral_public_key,
+            wrapSalt: item.wrap_salt,
+            wrapNonce: item.wrap_nonce,
+            wrappedFileKey: item.wrapped_file_key,
+            contentNonce: item.content_nonce,
+          }, deviceKey.secretKey);
+          // The cloud copy is acknowledged only after successful local encryption and index write.
+          existing = await saveLocalSnap(
+            user.id, item.id, item.mime_type, item.captured_at, "received", plaintext, item.id,
+          );
+        } finally {
+          ciphertext.fill(0);
+          plaintext?.fill(0);
+        }
+        await assertActiveSnapUser(user.id);
         // Show the durable local copy immediately; acknowledgement is a separate cloud step.
         setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
       }
 
+      await assertActiveSnapUser(user.id);
       const { error: ackError } = await supabase.functions.invoke("ack-snap", {
         body: { deliveryId: item.id },
       });
       if (ackError) {
-        // The server removes the delivery row after deleting the cloud object.
-        // If its success response was lost, a retry can legitimately receive 404.
-        // This item came from this recipient's inbox and its local copy is durable.
-        const status = (ackError as { context?: { status?: number } }).context?.status;
-        if (status !== 404) throw ackError;
+        // Keep the inbox item visible until the server confirms its download state.
+        // A missing row is not treated as proof that a permanent copy was verified.
+        throw ackError;
       }
+      await assertActiveSnapUser(user.id);
       setPending(old => old.filter(snap => snap.id !== item.id));
       setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
-      Alert.alert("Memory received", "The photo is now saved encrypted on this phone. The temporary cloud copy and delivery key have been removed.");
+      Alert.alert("Memory received", "The photo is saved encrypted on this phone. The temporary encrypted server copy is being retained until ONE-OS can verify a separate permanent copy.");
     } catch (error) {
-      Alert.alert("Couldn't receive this snap", error instanceof Error ? error.message : "Please retry when connected.");
-    } finally { setReceivingId(null); }
+      if (isCurrentAccount()) Alert.alert("Couldn't receive this snap", error instanceof Error ? error.message : "Please retry when connected.");
+    } finally {
+      if (isCurrentAccount()) setReceivingId(null);
+    }
   }
 
   async function openLocal(record: LocalSnap) {
@@ -402,7 +471,7 @@ export default function SnapMemoriesScreen() {
 
     <View style={s.noteCard}>
       <Text style={s.noteTitle}>A small privacy promise</Text>
-      <Text style={s.muted}>The temporary server copy is deleted after your partner receives and locally saves the photo. If their device has no successful ONE-OS server heartbeat for 72 hours, pending cloud photos and their delivery keys expire. Already received photos stay on each device. If they open the app offline, that cannot reset the server timer until they reconnect.</Text>
+      <Text style={s.muted}>Pending encrypted cloud photos expire after 72 hours without a server heartbeat. Once a recipient downloads a photo, ONE-OS keeps the temporary encrypted server copy until a separate permanent copy can be verified. Local encrypted copies remain on each device independently. Opening the app offline does not reset the server timer.</Text>
     </View>
     <Text style={s.footer}>ONE-OS · private moments, kept close</Text>
 

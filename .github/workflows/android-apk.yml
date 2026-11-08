@@ -3,11 +3,15 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
+      - phase-1/one-os-architecture-blueprint
     paths:
       - "app/**"
       - "src/**"
+      - "scripts/**"
       - "package.json"
+      - "package-lock.json"
       - "app.json"
       - "tsconfig.json"
       - ".github/workflows/android-apk.yml"
@@ -38,6 +42,21 @@ jobs:
 
       - name: TypeScript validation
         run: npx tsc --noEmit
+
+      - name: Run recovery-state tests
+        run: npm run test:recovery
+
+      - name: Run notification-state tests
+        run: npm run test:notifications
+
+      - name: Run Snap crypto tests
+        run: npm run test:crypto
+
+      - name: Run secure session storage tests
+        run: npm run test:session
+
+      - name: Run database-source inventory tests
+        run: npm run test:database-source
 
       - name: Generate native Android project
         run: npx expo prebuild --platform android --non-interactive

@@ -1,0 +1,843 @@
+import * as Notifications from "expo-notifications";
+import { Platform } from "react-native";
+import { getEncryptedItem, setEncryptedItem } from "@/lib/secureLocalStore";
+
+export const NOTIFICATION_CATEGORIES = [
+  "task",
+  "habit",
+  "routine",
+  "calendar",
+  "focus",
+  "briefing",
+  "shared",
+  "travel",
+  "system",
+] as const;
+
+export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
+export type RepeatRule =
+  | { kind: "once"; date: string }
+  | { kind: "daily"; hour: number; minute: number }
+  | { kind: "weekly"; weekday: number; hour: number; minute: number };
+
+export type Reminder = {
+  id: string;
+  category: NotificationCategory;
+  title: string;
+  body: string;
+  route?: string;
+  sourceKey?: string;
+  parentReminderId?: string;
+  repeat: RepeatRule;
+  notificationId: string | null;
+  enabled: boolean;
+  completed: boolean;
+  createdAt: string;
+};
+
+export type QuietHours = {
+  enabled: boolean;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+};
+
+export type NotificationHistoryEntry = {
+  id: string;
+  reminderId: string;
+  category: NotificationCategory;
+  title: string;
+  body: string;
+  event: "received" | "opened" | "snoozed" | "completed";
+  occurredAt: string;
+};
+
+export type NotificationSettings = {
+  enabled: boolean;
+  sound: boolean;
+  vibration: boolean;
+  calendarLeadMinutes: number;
+  categoryEnabled: Record<NotificationCategory, boolean>;
+  quietHours: QuietHours;
+};
+
+type NotificationState = {
+  reminders: Reminder[];
+  history: NotificationHistoryEntry[];
+  settings: NotificationSettings;
+};
+
+export type ReminderDraft = {
+  category: NotificationCategory;
+  title: string;
+  body?: string;
+  route?: string;
+  sourceKey?: string;
+  repeat: RepeatRule;
+};
+
+const STORAGE_PREFIX = "one-os-notifications-v1:";
+const DEFAULT_SETTINGS: NotificationSettings = {
+  enabled: true,
+  sound: true,
+  vibration: true,
+  calendarLeadMinutes: 15,
+  categoryEnabled: {
+    task: true,
+    habit: true,
+    routine: true,
+    calendar: true,
+    focus: true,
+    briefing: true,
+    shared: true,
+    travel: true,
+    system: true,
+  },
+  quietHours: {
+    enabled: false,
+    startHour: 22,
+    startMinute: 0,
+    endHour: 7,
+    endMinute: 0,
+  },
+};
+
+const CATEGORY_LABELS: Record<NotificationCategory, string> = {
+  task: "Tasks",
+  habit: "Habits",
+  routine: "Routines",
+  calendar: "Calendar",
+  focus: "Focus",
+  briefing: "Daily briefings",
+  shared: "Shared space",
+  travel: "Travel",
+  system: "ONE-OS updates",
+};
+
+const makeId = () =>
+  "rem_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10);
+
+function storageKey(userId: string) {
+  return STORAGE_PREFIX + userId;
+}
+
+function isCategory(value: unknown): value is NotificationCategory {
+  return typeof value === "string" && (NOTIFICATION_CATEGORIES as readonly string[]).includes(value);
+}
+
+function isValidClock(hour: unknown, minute: unknown): boolean {
+  return typeof hour === "number" && Number.isInteger(hour) && hour >= 0 && hour <= 23 &&
+    typeof minute === "number" && Number.isInteger(minute) && minute >= 0 && minute <= 59;
+}
+
+function isValidRepeatRule(value: unknown): value is RepeatRule {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const repeat = value as { kind?: unknown; date?: unknown; hour?: unknown; minute?: unknown; weekday?: unknown };
+  if (repeat.kind === "once") {
+    return typeof repeat.date === "string" && repeat.date.length <= 64 &&
+      Number.isFinite(Date.parse(repeat.date));
+  }
+  if (repeat.kind === "daily") return isValidClock(repeat.hour, repeat.minute);
+  if (repeat.kind === "weekly") {
+    return isValidClock(repeat.hour, repeat.minute) &&
+      typeof repeat.weekday === "number" && Number.isInteger(repeat.weekday) &&
+      repeat.weekday >= 1 && repeat.weekday <= 7;
+  }
+  return false;
+}
+
+function isQuietTime(date: Date, quiet: QuietHours) {
+  if (!quiet.enabled) return false;
+  const current = date.getHours() * 60 + date.getMinutes();
+  const start = quiet.startHour * 60 + quiet.startMinute;
+  const end = quiet.endHour * 60 + quiet.endMinute;
+  if (start === end) return false;
+  return start < end
+    ? current >= start && current < end
+    : current >= start || current < end;
+}
+
+function moveAfterQuietHours(date: Date, quiet: QuietHours) {
+  if (!isQuietTime(date, quiet)) return date;
+  const next = new Date(date);
+  next.setHours(quiet.endHour, quiet.endMinute, 0, 0);
+  if (next.getTime() <= date.getTime()) next.setDate(next.getDate() + 1);
+  return next;
+}
+
+function defaultState(): NotificationState {
+  return { reminders: [], history: [], settings: DEFAULT_SETTINGS };
+}
+
+export function normalizeNotificationState(value: unknown): NotificationState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return defaultState();
+  const source = value as Partial<NotificationState>;
+  const rawSettings = source.settings && typeof source.settings === "object" && !Array.isArray(source.settings)
+    ? source.settings as Partial<NotificationSettings>
+    : undefined;
+  const rawCategories = rawSettings?.categoryEnabled && typeof rawSettings.categoryEnabled === "object" &&
+    !Array.isArray(rawSettings.categoryEnabled)
+    ? rawSettings.categoryEnabled as Partial<Record<NotificationCategory, boolean>>
+    : undefined;
+  const rawQuiet = rawSettings?.quietHours && typeof rawSettings.quietHours === "object" &&
+    !Array.isArray(rawSettings.quietHours)
+    ? rawSettings.quietHours as Partial<QuietHours>
+    : undefined;
+
+  const history: NotificationHistoryEntry[] = [];
+  const seenHistoryIds = new Set<string>();
+  for (const item of Array.isArray(source.history) ? source.history : []) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const row = item as Partial<NotificationHistoryEntry>;
+    if (
+      typeof row.id !== "string" || row.id.length === 0 || row.id.length > 180 ||
+      seenHistoryIds.has(row.id) ||
+      typeof row.reminderId !== "string" || row.reminderId.length === 0 || row.reminderId.length > 180 ||
+      !isCategory(row.category) ||
+      typeof row.title !== "string" || row.title.length === 0 || row.title.length > 90 ||
+      typeof row.body !== "string" || row.body.length > 240 ||
+      (row.event !== "received" && row.event !== "opened" && row.event !== "snoozed" && row.event !== "completed") ||
+      typeof row.occurredAt !== "string" || !Number.isFinite(Date.parse(row.occurredAt))
+    ) continue;
+    seenHistoryIds.add(row.id);
+    history.push(row as NotificationHistoryEntry);
+    if (history.length >= 100) break;
+  }
+
+  const reminders: Reminder[] = [];
+  const seenReminderIds = new Set<string>();
+  const seenSourceKeys = new Set<string>();
+  for (const item of Array.isArray(source.reminders) ? source.reminders : []) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const row = item as Partial<Reminder>;
+    if (
+      typeof row.id !== "string" || row.id.length === 0 || row.id.length > 180 ||
+      seenReminderIds.has(row.id) ||
+      !isCategory(row.category) ||
+      typeof row.title !== "string" || row.title.trim().length === 0 || row.title.length > 90 ||
+      typeof row.body !== "string" || row.body.length > 240 ||
+      (row.route !== undefined && (typeof row.route !== "string" || row.route.length > 120)) ||
+      (row.sourceKey !== undefined && (typeof row.sourceKey !== "string" || row.sourceKey.length === 0 || row.sourceKey.length > 180)) ||
+      (row.parentReminderId !== undefined && (typeof row.parentReminderId !== "string" || row.parentReminderId.length === 0 || row.parentReminderId.length > 180)) ||
+      (row.sourceKey !== undefined && seenSourceKeys.has(row.sourceKey)) ||
+      (row.notificationId !== undefined && row.notificationId !== null &&
+        (typeof row.notificationId !== "string" || row.notificationId.length === 0 || row.notificationId.length > 256)) ||
+      typeof row.enabled !== "boolean" || typeof row.completed !== "boolean" ||
+      typeof row.createdAt !== "string" || !Number.isFinite(Date.parse(row.createdAt)) ||
+      !isValidRepeatRule(row.repeat)
+    ) continue;
+
+    seenReminderIds.add(row.id);
+    if (row.sourceKey !== undefined) seenSourceKeys.add(row.sourceKey);
+    reminders.push({
+      ...row,
+      notificationId: typeof row.notificationId === "string" ? row.notificationId : null,
+    } as Reminder);
+    if (reminders.length >= 200) break;
+  }
+
+  const categoryEnabled = (category: NotificationCategory) =>
+    typeof rawCategories?.[category] === "boolean"
+      ? rawCategories[category] as boolean
+      : DEFAULT_SETTINGS.categoryEnabled[category];
+  const quietClock = (field: "startHour" | "startMinute" | "endHour" | "endMinute") => {
+    const value = rawQuiet?.[field];
+    const maximum = field.endsWith("Hour") ? 23 : 59;
+    return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= maximum
+      ? value
+      : DEFAULT_SETTINGS.quietHours[field];
+  };
+
+  return {
+    reminders,
+    history,
+    settings: {
+      enabled: typeof rawSettings?.enabled === "boolean" ? rawSettings.enabled : DEFAULT_SETTINGS.enabled,
+      sound: typeof rawSettings?.sound === "boolean" ? rawSettings.sound : DEFAULT_SETTINGS.sound,
+      vibration: typeof rawSettings?.vibration === "boolean" ? rawSettings.vibration : DEFAULT_SETTINGS.vibration,
+      calendarLeadMinutes: [5, 10, 15, 30, 60, 120].includes(rawSettings?.calendarLeadMinutes ?? -1)
+        ? rawSettings?.calendarLeadMinutes as number
+        : DEFAULT_SETTINGS.calendarLeadMinutes,
+      categoryEnabled: {
+        task: categoryEnabled("task"),
+        habit: categoryEnabled("habit"),
+        routine: categoryEnabled("routine"),
+        calendar: categoryEnabled("calendar"),
+        focus: categoryEnabled("focus"),
+        briefing: categoryEnabled("briefing"),
+        shared: categoryEnabled("shared"),
+        travel: categoryEnabled("travel"),
+        system: categoryEnabled("system"),
+      },
+      quietHours: {
+        enabled: rawQuiet?.enabled === true,
+        startHour: quietClock("startHour"),
+        startMinute: quietClock("startMinute"),
+        endHour: quietClock("endHour"),
+        endMinute: quietClock("endMinute"),
+      },
+    },
+  };
+}
+let notificationQueue: Promise<void> = Promise.resolve();
+
+async function withNotificationQueue<T>(work: () => Promise<T>): Promise<T> {
+  const previous = notificationQueue;
+  let release!: () => void;
+  const current = new Promise<void>(resolve => { release = resolve; });
+  notificationQueue = current;
+  await previous.catch(() => undefined);
+  try {
+    return await work();
+  } finally {
+    release();
+  }
+}
+
+async function loadState(userId: string): Promise<NotificationState> {
+  const stored = await getEncryptedItem(storageKey(userId), userId);
+  if (!stored) return defaultState();
+  try {
+    return normalizeNotificationState(JSON.parse(stored));
+  } catch {
+    throw new Error("Notification settings are unreadable. Existing encrypted data was left unchanged.");
+  }
+}
+
+async function saveState(userId: string, state: NotificationState) {
+  await setEncryptedItem(storageKey(userId), userId, JSON.stringify(state));
+}
+
+function channelId(category: NotificationCategory, settings: NotificationSettings) {
+  return [
+    "oneos",
+    category,
+    settings.sound ? "sound" : "silent",
+    settings.vibration ? "vibrate" : "still",
+  ].join("-");
+}
+
+async function ensureNotificationChannels(settings: NotificationSettings) {
+  if (Platform.OS !== "android") return;
+  for (const category of NOTIFICATION_CATEGORIES) {
+    const id = channelId(category, settings);
+    await Notifications.setNotificationChannelAsync(id, {
+      name: CATEGORY_LABELS[category],
+      description: CATEGORY_LABELS[category] + " reminders from ONE-OS",
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: settings.vibration ? [0, 250, 120, 250] : undefined,
+      sound: settings.sound ? "default" : null,
+      lightColor: "#A99CFF",
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
+    });
+  }
+}
+
+export async function initializeNotificationChannels() {
+  await ensureNotificationChannels(DEFAULT_SETTINGS);
+}
+
+export async function requestNotificationPermission() {
+  await initializeNotificationChannels();
+  const current = await Notifications.getPermissionsAsync();
+  if (current.granted) return current;
+  return Notifications.requestPermissionsAsync();
+}
+
+export async function getNotificationPermission() {
+  await initializeNotificationChannels();
+  return Notifications.getPermissionsAsync();
+}
+
+export async function reconcileScheduledNotifications(userId: string | null) {
+  return withNotificationQueue(async () => {
+  const pending = await Notifications.getAllScheduledNotificationsAsync();
+  const owned = new Map<string, Notifications.NotificationRequest>();
+  for (const request of pending) {
+    const data = request.content.data as { userId?: unknown; reminderId?: unknown } | undefined;
+    if (!userId || data?.userId !== userId) {
+      await Notifications.cancelScheduledNotificationAsync(request.identifier).catch(() => undefined);
+      continue;
+    }
+    if (typeof data.reminderId === "string") {
+      if (owned.has(data.reminderId)) {
+        await Notifications.cancelScheduledNotificationAsync(request.identifier).catch(() => undefined);
+      } else {
+        owned.set(data.reminderId, request);
+      }
+    }
+  }
+  if (!userId) return;
+
+  const state = await loadState(userId);
+  await ensureNotificationChannels(state.settings);
+  const permission = await Notifications.getPermissionsAsync();
+  let changed = false;
+  for (const reminder of state.reminders) {
+    const existing = owned.get(reminder.id);
+    const shouldSchedule = permission.granted && state.settings.enabled &&
+      state.settings.categoryEnabled[reminder.category] && reminder.enabled && !reminder.completed;
+    if (!shouldSchedule) {
+      if (existing) {
+        await Notifications.cancelScheduledNotificationAsync(existing.identifier).catch(() => undefined);
+        owned.delete(reminder.id);
+      }
+      if (reminder.notificationId !== null) {
+        reminder.notificationId = null;
+        changed = true;
+      }
+      continue;
+    }
+    if (existing) {
+      if (reminder.notificationId !== existing.identifier) {
+        reminder.notificationId = existing.identifier;
+        changed = true;
+      }
+      owned.delete(reminder.id);
+      continue;
+    }
+    if (reminder.repeat.kind === "once" && new Date(reminder.repeat.date).getTime() <= Date.now()) {
+      reminder.notificationId = null;
+      reminder.enabled = false;
+      changed = true;
+      continue;
+    }
+    try {
+      const nextId = await scheduleNative(userId, reminder, state.settings);
+      if (reminder.notificationId !== nextId) {
+        reminder.notificationId = nextId;
+        changed = true;
+      }
+    } catch {
+      if (reminder.notificationId !== null) {
+        reminder.notificationId = null;
+        changed = true;
+      }
+    }
+  }
+  // Any remaining app-owned scheduled alerts have no encrypted reminder
+  // record, so they are stale and must not continue firing.
+  for (const request of owned.values()) {
+    await Notifications.cancelScheduledNotificationAsync(request.identifier).catch(() => undefined);
+  }
+  if (changed) await saveState(userId, state);
+  });
+}
+
+export async function getNotificationState(userId: string) {
+  return withNotificationQueue(async () => {
+  const state = await loadState(userId);
+  await ensureNotificationChannels(state.settings);
+  return state;
+  });
+}
+
+function buildTrigger(repeat: RepeatRule, settings: NotificationSettings, category: NotificationCategory) {
+  const channel = channelId(category, settings);
+  if (repeat.kind === "once") {
+    const date = new Date(repeat.date);
+    if (!Number.isFinite(date.getTime()) || date.getTime() <= Date.now()) {
+      throw new Error("Choose a reminder time in the future.");
+    }
+    const adjusted = moveAfterQuietHours(date, settings.quietHours);
+    return {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: adjusted,
+      channelId: channel,
+    } satisfies Notifications.NotificationTriggerInput;
+  }
+  if (!isValidClock(repeat.hour, repeat.minute)) throw new Error("The reminder time is invalid.");
+  const probe = new Date();
+  probe.setHours(repeat.hour, repeat.minute, 0, 0);
+  if (isQuietTime(probe, settings.quietHours)) {
+    throw new Error("That repeat time falls inside quiet hours. Choose a time outside quiet hours.");
+  }
+  if (repeat.kind === "daily") {
+    return {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      hour: repeat.hour,
+      minute: repeat.minute,
+      channelId: channel,
+    } satisfies Notifications.NotificationTriggerInput;
+  }
+  if (!Number.isInteger(repeat.weekday) || repeat.weekday < 1 || repeat.weekday > 7) {
+    throw new Error("Choose a valid weekday for this reminder.");
+  }
+  return {
+    type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+    weekday: repeat.weekday,
+    hour: repeat.hour,
+    minute: repeat.minute,
+    channelId: channel,
+  } satisfies Notifications.NotificationTriggerInput;
+}
+
+async function scheduleNative(userId: string, reminder: Reminder, settings: NotificationSettings) {
+  if (!settings.enabled || !settings.categoryEnabled[reminder.category] || !reminder.enabled || reminder.completed) {
+    return null;
+  }
+  const permission = await Notifications.getPermissionsAsync();
+  if (!permission.granted) throw new Error("Notification permission is off. Enable it in notification settings first.");
+  const trigger = buildTrigger(reminder.repeat, settings, reminder.category);
+  return Notifications.scheduleNotificationAsync({
+    content: {
+      title: reminder.title,
+      body: reminder.body,
+      sound: settings.sound,
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+      categoryIdentifier: "oneos_reminder",
+      data: {
+        userId,
+        reminderId: reminder.id,
+        category: reminder.category,
+        sourceKey: reminder.sourceKey,
+        parentReminderId: reminder.parentReminderId,
+        repeatKind: reminder.repeat.kind,
+        route: reminder.route ?? "/notifications",
+      },
+    },
+    trigger,
+  });
+}
+
+export async function scheduleReminder(userId: string, draft: ReminderDraft) {
+  return withNotificationQueue(async () => {
+  const title = draft.title.trim();
+  if (!title) throw new Error("Enter a reminder title.");
+  if (title.length > 90) throw new Error("Keep reminder titles under 90 characters.");
+  if (!isCategory(draft.category)) throw new Error("Choose a valid reminder category.");
+  const body = (draft.body ?? "").trim().slice(0, 240);
+  const state = await loadState(userId);
+  if (!state.settings.enabled || !state.settings.categoryEnabled[draft.category]) {
+    throw new Error("This notification category is switched off in your settings.");
+  }
+  const permission = await Notifications.getPermissionsAsync();
+  if (!permission.granted) throw new Error("Notification permission is off. Enable it first.");
+  await ensureNotificationChannels(state.settings);
+  if (draft.sourceKey && draft.sourceKey.length > 180) throw new Error("Reminder source key is too long.");
+  const existing = draft.sourceKey
+    ? state.reminders.find(item => item.sourceKey === draft.sourceKey)
+    : undefined;
+  if (!existing && state.reminders.length >= 200) {
+    throw new Error("Your local reminder limit is 200. Remove an old reminder before adding another.");
+  }
+  const reminder: Reminder = {
+    id: existing?.id ?? makeId(),
+    category: draft.category,
+    title,
+    body,
+    route: draft.route,
+    sourceKey: draft.sourceKey,
+    repeat: draft.repeat,
+    notificationId: null,
+    enabled: true,
+    completed: false,
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
+  };
+  const notificationId = await scheduleNative(userId, reminder, state.settings);
+  reminder.notificationId = notificationId;
+  const staleSnoozes = existing
+    ? state.reminders.filter(item => item.parentReminderId === existing.id)
+    : [];
+  state.reminders = [
+    reminder,
+    ...state.reminders.filter(item =>
+      item.id !== reminder.id && item.parentReminderId !== reminder.id,
+    ),
+  ].slice(0, 200);
+  try {
+    await saveState(userId, state);
+  } catch (error) {
+    if (notificationId) await Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => undefined);
+    throw error;
+  }
+  if (existing?.notificationId && existing.notificationId !== notificationId) {
+    await Notifications.cancelScheduledNotificationAsync(existing.notificationId).catch(() => undefined);
+  }
+  for (const snoozed of staleSnoozes) {
+    if (snoozed.notificationId) {
+      await Notifications.cancelScheduledNotificationAsync(snoozed.notificationId).catch(() => undefined);
+    }
+  }
+  return reminder;
+  });
+}
+
+export async function replaceReminderSet(userId: string, sourcePrefix: string, drafts: ReminderDraft[]) {
+  return withNotificationQueue(async () => {
+    if (!sourcePrefix || sourcePrefix.length > 180 || !Array.isArray(drafts)) {
+      throw new Error("The reminder group is invalid.");
+    }
+    const sourceKeys = drafts.map(item => item.sourceKey);
+    if (sourceKeys.some(key => typeof key !== "string" || !key.startsWith(sourcePrefix)) ||
+        new Set(sourceKeys).size !== sourceKeys.length) {
+      throw new Error("Every reminder must have a unique source key in the selected group.");
+    }
+    const state = await loadState(userId);
+    const existing = state.reminders.filter(item => item.sourceKey?.startsWith(sourcePrefix));
+    if (state.reminders.length - existing.length + drafts.length > 200) {
+      throw new Error("Your local reminder limit is 200. Remove an old reminder before adding another.");
+    }
+    if (drafts.length > 0) {
+      const permission = await Notifications.getPermissionsAsync();
+      if (!permission.granted) throw new Error("Notification permission is off. Enable it first.");
+      await ensureNotificationChannels(state.settings);
+    }
+    const created: Reminder[] = [];
+    try {
+      for (const draft of drafts) {
+        const title = draft.title.trim();
+        if (!title || title.length > 90) throw new Error("Reminder titles must contain 1–90 characters.");
+        if (!isCategory(draft.category)) throw new Error("Choose a valid reminder category.");
+        if (!state.settings.enabled || !state.settings.categoryEnabled[draft.category]) {
+          throw new Error("This notification category is switched off in your settings.");
+        }
+        const previous = existing.find(item => item.sourceKey === draft.sourceKey);
+        const reminder: Reminder = {
+          id: previous?.id ?? makeId(),
+          category: draft.category,
+          title,
+          body: (draft.body ?? "").trim().slice(0, 240),
+          route: draft.route,
+          sourceKey: draft.sourceKey,
+          repeat: draft.repeat,
+          notificationId: null,
+          enabled: true,
+          completed: false,
+          createdAt: previous?.createdAt ?? new Date().toISOString(),
+        };
+        reminder.notificationId = await scheduleNative(userId, reminder, state.settings);
+        created.push(reminder);
+      }
+      const nextState: NotificationState = {
+        ...state,
+        reminders: [...created, ...state.reminders.filter(item => !item.sourceKey?.startsWith(sourcePrefix))],
+      };
+      await saveState(userId, nextState);
+      for (const old of existing) {
+        if (old.notificationId) await Notifications.cancelScheduledNotificationAsync(old.notificationId).catch(() => undefined);
+        const snoozes = state.reminders.filter(item => item.parentReminderId === old.id);
+        for (const snooze of snoozes) {
+          if (snooze.notificationId) await Notifications.cancelScheduledNotificationAsync(snooze.notificationId).catch(() => undefined);
+        }
+      }
+      return created;
+    } catch (error) {
+      for (const reminder of created) {
+        if (reminder.notificationId) await Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => undefined);
+      }
+      throw error;
+    }
+  });
+}
+
+export async function rescheduleReminder(userId: string, reminderId: string, date: Date) {
+  return withNotificationQueue(async () => {
+    if (!(date instanceof Date) || !Number.isFinite(date.getTime()) || date.getTime() <= Date.now()) {
+      throw new Error("Choose a future reminder time.");
+    }
+    const state = await loadState(userId);
+    const reminder = state.reminders.find(item => item.id === reminderId);
+    if (!reminder || reminder.completed) throw new Error("This reminder is no longer active.");
+    if (reminder.repeat.kind !== "once") throw new Error("Only one-time reminders can be moved from this screen.");
+    if (!state.settings.enabled || !state.settings.categoryEnabled[reminder.category]) {
+      throw new Error("This notification category is switched off in settings.");
+    }
+    const oldId = reminder.notificationId;
+    const updated: Reminder = { ...reminder, repeat: { kind: "once" as const, date: date.toISOString() }, notificationId: null };
+    const nextId = await scheduleNative(userId, updated, state.settings);
+    if (!nextId) throw new Error("This reminder could not be scheduled.");
+    updated.notificationId = nextId;
+    state.reminders = state.reminders.map(item => item.id === reminderId ? updated : item);
+    try {
+      await saveState(userId, state);
+    } catch (error) {
+      await Notifications.cancelScheduledNotificationAsync(nextId).catch(() => undefined);
+      throw error;
+    }
+    if (oldId && oldId !== nextId) {
+      await Notifications.cancelScheduledNotificationAsync(oldId).catch(() => undefined);
+    }
+    return updated;
+  });
+}
+
+export async function cancelReminder(userId: string, reminderId: string) {
+  return withNotificationQueue(async () => {
+    const state = await loadState(userId);
+    const targetIds = new Set([
+      reminderId,
+      ...state.reminders.filter(item => item.parentReminderId === reminderId).map(item => item.id),
+    ]);
+    for (const reminder of state.reminders) {
+      if (targetIds.has(reminder.id) && reminder.notificationId) {
+        await Notifications.cancelScheduledNotificationAsync(reminder.notificationId).catch(() => undefined);
+      }
+    }
+    state.reminders = state.reminders.filter(item => !targetIds.has(item.id));
+    await saveState(userId, state);
+  });
+}
+
+export async function completeReminder(userId: string, reminderId: string) {
+  return withNotificationQueue(async () => {
+    const state = await loadState(userId);
+    const reminder = state.reminders.find(item => item.id === reminderId);
+    if (!reminder) return;
+    const childReminders = state.reminders.filter(item => item.parentReminderId === reminderId);
+    for (const item of [reminder, ...childReminders]) {
+      if (item.notificationId) await Notifications.cancelScheduledNotificationAsync(item.notificationId).catch(() => undefined);
+      item.notificationId = null;
+      item.enabled = false;
+      item.completed = true;
+    }
+    await saveState(userId, state);
+  });
+}
+
+export async function cancelSnoozesForReminder(userId: string, reminderId: string) {
+  return withNotificationQueue(async () => {
+    const state = await loadState(userId);
+    const snoozes = state.reminders.filter(item => item.parentReminderId === reminderId);
+    for (const item of snoozes) {
+      if (item.notificationId) await Notifications.cancelScheduledNotificationAsync(item.notificationId).catch(() => undefined);
+    }
+    state.reminders = state.reminders.filter(item => item.parentReminderId !== reminderId);
+    await saveState(userId, state);
+  });
+}
+
+export async function snoozeReminder(userId: string, reminderId: string, minutes = 10) {
+  return withNotificationQueue(async () => {
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 240) throw new Error("Snooze duration is invalid.");
+  const state = await loadState(userId);
+  const reminder = state.reminders.find(item => item.id === reminderId);
+  if (!reminder || reminder.completed) return;
+  if (state.reminders.length >= 200) {
+    throw new Error("Your local reminder limit is 200. Remove an old reminder before snoozing.");
+  }
+
+  // Keep a recurring source reminder intact. Snoozing creates a separate
+  // one-off alert; a one-time source is paused only after the snooze is saved.
+  const isOneTime = reminder.repeat.kind === "once";
+  const oldId = reminder.notificationId;
+  const snoozed: Reminder = {
+    ...reminder,
+    id: makeId(),
+    sourceKey: undefined,
+    parentReminderId: reminder.parentReminderId ?? reminder.id,
+    repeat: { kind: "once", date: new Date(Date.now() + minutes * 60_000).toISOString() },
+    notificationId: null,
+    enabled: true,
+    completed: false,
+    createdAt: new Date().toISOString(),
+  };
+  snoozed.notificationId = await scheduleNative(userId, snoozed, state.settings);
+  if (!snoozed.notificationId) {
+    throw new Error("This reminder category is switched off, so it cannot be snoozed.");
+  }
+  if (isOneTime) {
+    reminder.notificationId = null;
+    reminder.enabled = false;
+    reminder.completed = true;
+  }
+  state.reminders = [snoozed, ...state.reminders].slice(0, 200);
+  try {
+    await saveState(userId, state);
+  } catch (error) {
+    if (snoozed.notificationId) await Notifications.cancelScheduledNotificationAsync(snoozed.notificationId).catch(() => undefined);
+    throw error;
+  }
+  if (isOneTime && oldId) await Notifications.cancelScheduledNotificationAsync(oldId).catch(() => undefined);
+  });
+}
+
+export async function updateNotificationSettings(
+  userId: string,
+  patch: Partial<Omit<NotificationSettings, "categoryEnabled" | "quietHours">> & {
+    categoryEnabled?: Partial<Record<NotificationCategory, boolean>>;
+    quietHours?: Partial<QuietHours>;
+  },
+) {
+  return withNotificationQueue(async () => {
+    const state = await loadState(userId);
+    const oldSettings = state.settings;
+    state.settings = {
+      ...oldSettings,
+      ...patch,
+      categoryEnabled: { ...oldSettings.categoryEnabled, ...patch.categoryEnabled },
+      quietHours: { ...oldSettings.quietHours, ...patch.quietHours },
+    };
+    await ensureNotificationChannels(state.settings);
+    const permission = await Notifications.getPermissionsAsync();
+    if (permission.granted) {
+      for (const reminder of state.reminders) {
+        const oldId = reminder.notificationId;
+        if (oldId) {
+          await Notifications.cancelScheduledNotificationAsync(oldId).catch(() => undefined);
+          reminder.notificationId = null;
+        }
+        if (reminder.enabled && !reminder.completed) {
+          try {
+            const newId = await scheduleNative(userId, reminder, state.settings);
+            reminder.notificationId = newId;
+          } catch {
+            reminder.notificationId = null;
+          }
+        }
+      }
+    }
+    await saveState(userId, state);
+    return state;
+  });
+}
+
+export async function recordNotificationHistory(
+  userId: string,
+  entry: Omit<NotificationHistoryEntry, "id" | "occurredAt"> & { occurredAt?: string },
+) {
+  return withNotificationQueue(async () => {
+    const state = await loadState(userId);
+    const id = makeId();
+    state.history = [{
+      ...entry,
+      id,
+      occurredAt: entry.occurredAt ?? new Date().toISOString(),
+    }, ...state.history].slice(0, 100);
+    await saveState(userId, state);
+  });
+}
+
+export async function listEnabledReminderCategories(userId: string) {
+  return withNotificationQueue(async () => {
+  const state = await loadState(userId);
+  return NOTIFICATION_CATEGORIES.filter(category =>
+    state.settings.enabled && state.settings.categoryEnabled[category],
+  );
+  });
+}
+
+export function getNotificationCategoryLabel(category: NotificationCategory) {
+  return CATEGORY_LABELS[category];
+}
+
+export function configureNotificationResponseActions() {
+  void Notifications.setNotificationCategoryAsync("oneos_reminder", [
+    {
+      identifier: "SNOOZE_10",
+      buttonTitle: "Snooze 10 min",
+      options: { opensAppToForeground: false },
+    },
+    {
+      identifier: "DONE",
+      buttonTitle: "Done",
+      options: { opensAppToForeground: false },
+    },
+    {
+      identifier: "OPEN",
+      buttonTitle: "Open",
+      options: { opensAppToForeground: true },
+    },
+  ]);
+}
