@@ -6,8 +6,9 @@ import { getEncryptedItem, initializeUserKeyForFreshInstall, setEncryptedItem } 
 import { inspectLocalEncryptedData } from "@/lib/keyRecoveryRegistry";
 import { classifyRecoveryBootstrapState } from "@/lib/keyRecoveryState";
 import { migrateLegacyRecordForUser } from "@/lib/legacyMigration";
+import { cancelReminder } from "@/lib/notifications";
 
-export type Task = { id: string; title: string; notes?: string; dueDate?: string; completed: boolean; createdAt: string };
+export type Task = { id: string; title: string; notes?: string; dueDate?: string; reminderId?: string; completed: boolean; createdAt: string };
 export type Habit = { id: string; title: string; createdAt: string; archived: boolean };
 type Store = {
   tasks: Task[];
@@ -18,6 +19,7 @@ type Store = {
   canEdit: boolean;
   addTask: (title: string) => void;
   toggleTask: (id: string) => void;
+  setTaskReminder: (id: string, reminderId: string, dueDate: string) => void;
   addHabit: (title: string) => void;
   toggleHabitToday: (id: string) => void;
 };
@@ -129,7 +131,24 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     const value = title.trim();
     if (value) setTasks(old => [{ id: uid(), title: value, completed: false, createdAt: new Date().toISOString() }, ...old]);
   }, [storageUnlocked, ready, activeUserId, userId]);
-  const toggleTask = useCallback((id: string) => { if (!storageUnlocked || !ready || activeUserId !== userId) return; setTasks(old => old.map(t => t.id === id ? { ...t, completed: !t.completed } : t)); }, [storageUnlocked, ready, activeUserId, userId]);
+  const toggleTask = useCallback((id: string) => {
+    if (!storageUnlocked || !ready || activeUserId !== userId) return;
+    const task = tasks.find(item => item.id === id);
+    if (!task) return;
+    const completing = !task.completed;
+    if (completing && task.reminderId && userId) {
+      void cancelReminder(userId, task.reminderId).catch(() => undefined);
+    }
+    setTasks(old => old.map(item => item.id === id
+      ? { ...item, completed: completing, reminderId: completing ? undefined : item.reminderId, dueDate: completing ? undefined : item.dueDate }
+      : item));
+  }, [tasks, storageUnlocked, ready, activeUserId, userId]);
+  const setTaskReminder = useCallback((id: string, reminderId: string, dueDate: string) => {
+    if (!storageUnlocked || !ready || activeUserId !== userId) return;
+    setTasks(old => old.map(item => item.id === id
+      ? { ...item, reminderId, dueDate, completed: false }
+      : item));
+  }, [storageUnlocked, ready, activeUserId, userId]);
   const addHabit = useCallback((title: string) => {
     if (!storageUnlocked || !ready || activeUserId !== userId) return;
     const value = title.trim();
@@ -142,7 +161,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   }, [storageUnlocked, ready, activeUserId, userId]);
 
   const canEdit = ready && storageUnlocked && activeUserId === userId;
-  const value = useMemo(() => ({ tasks, habits, completions, ready, storageError, canEdit, addTask, toggleTask, addHabit, toggleHabitToday }), [tasks, habits, completions, ready, storageError, canEdit, addTask, toggleTask, addHabit, toggleHabitToday]);
+  const value = useMemo(() => ({ tasks, habits, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday }), [tasks, habits, completions, ready, storageError, canEdit, addTask, toggleTask, setTaskReminder, addHabit, toggleHabitToday]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 export function useAppStore() {
