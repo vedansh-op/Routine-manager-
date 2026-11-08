@@ -244,6 +244,9 @@ begin
   update public.shared_archives
     set ended_at=now(), ended_by=v_user
     where id=v_archive and ended_at is null;
+  update public.space_invitations
+    set expires_at=now()
+    where space_id=p_space_id and accepted_at is null;
 end;
 $$;
 
@@ -289,6 +292,36 @@ create policy "Creators can delete their shared activities"
     and exists (select 1 from public.shared_archives a
       where a.source_space_id=shared_activities.space_id and a.ended_at is null)
   );
+
+-- Prevent other server-side write paths (invites and Snap sends) from
+-- bypassing the ended-connection state. This is a trigger guard because the
+-- associated RPCs execute with elevated privileges.
+create or replace function public.reject_writes_to_ended_shared_space()
+returns trigger language plpgsql security definer set search_path = ''
+as $guard$
+declare v_space_id uuid;
+begin
+  v_space_id := new.space_id;
+  if exists (
+    select 1 from public.shared_archives a
+    where a.source_space_id=v_space_id and a.ended_at is not null
+  ) then
+    raise exception 'This shared connection has ended';
+  end if;
+  return new;
+end;
+$guard$;
+revoke all on function public.reject_writes_to_ended_shared_space() from public;
+
+drop trigger if exists reject_invites_for_ended_shared_space on public.space_invitations;
+create trigger reject_invites_for_ended_shared_space
+  before insert on public.space_invitations
+  for each row execute function public.reject_writes_to_ended_shared_space();
+
+drop trigger if exists reject_snaps_for_ended_shared_space on public.snap_deliveries;
+create trigger reject_snaps_for_ended_shared_space
+  before insert on public.snap_deliveries
+  for each row execute function public.reject_writes_to_ended_shared_space();
 
 comment on table public.shared_archives is
   'Detached shared-history container. Intentionally survives deletion of the source space or either Auth account.';
