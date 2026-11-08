@@ -269,12 +269,12 @@ This table is a safety classifier, not an implemented startup decision. The curr
 
 ## Recovery bootstrap implementation status (source-only)
 
-The app startup path now performs read-only device-key and local-data inspections before opening the encrypted AppStore:
+The app startup path now performs a read-only local-data inventory before opening the encrypted AppStore. Device-key inspection remains a separate Snap recovery concern and does not block offline access to local tasks:
 
 - A valid existing data key permits normal local-data loading.
 - A missing key with encrypted task data, encrypted Snap index, or visible Snap files stops startup and preserves the data for recovery.
 - A fresh candidate requires a positively visible empty Snap vault. Legacy plaintext records may be migrated after the new key is explicitly initialized.
-- Incomplete inspections, revoked or inconsistent device-key state, malformed keys, and inaccessible vault storage stop startup for review.
+- Incomplete local inspections, malformed data keys, and inaccessible vault storage stop startup for review.
 - Key reads and decryption no longer create replacement key material. First-use key creation is a separate explicit operation and is coalesced across concurrent startup effects.
 
 Automated recovery-state and secure-local-store tests have been added to the TypeScript workflow. Their GitHub Actions result has not yet been verified. This remains source-level work only: no recovery envelope, historical Snap recovery, physical-device validation, or production deployment is complete.
