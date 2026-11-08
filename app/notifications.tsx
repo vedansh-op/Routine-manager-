@@ -430,5 +430,6 @@ const s = StyleSheet.create({
   reminderTitle:{color:"#f4f2ff",fontSize:13,fontWeight:"700"},reminderActions:{gap:12,alignItems:"flex-end"},action:{color:"#c7bfff",fontSize:11,fontWeight:"800"},remove:{color:"#ff9eae",fontSize:10,fontWeight:"800"},
   scheduled:{color:"#9bd8b1",fontSize:9,fontWeight:"800",marginTop:5},completed:{color:"#c7bfff",fontSize:9,fontWeight:"800",marginTop:5},
   historyRow:{flexDirection:"row",alignItems:"center",gap:10,paddingVertical:11,borderTopWidth:1,borderTopColor:"#2b303a"},historyEvent:{color:"#b7adff",fontSize:8,fontWeight:"900",letterSpacing:0.7},
+  settingsLink:{color:"#c7bfff",fontSize:12,fontWeight:"700",textAlign:"center",marginTop:20},
   footer:{color:"#686e7b",fontSize:10,lineHeight:16,textAlign:"center",marginTop:24},
 });
