@@ -8,7 +8,7 @@ import { classifyRecoveryBootstrapState } from "@/lib/keyRecoveryState";
 import { migrateLegacyRecordForUser } from "@/lib/legacyMigration";
 import { cancelReminder } from "@/lib/notifications";
 
-export type Task = { id: string; title: string; notes?: string; dueDate?: string; reminderId?: string; completed: boolean; createdAt: string };
+export type Task = { id: string; title: string; notes?: string; dueDate?: string; reminderId?: string; reminderIds?: string[]; completed: boolean; createdAt: string };
 export type Habit = { id: string; title: string; createdAt: string; archived: boolean; reminderId?: string; reminderTime?: string };
 type Store = {
   tasks: Task[];
@@ -19,7 +19,7 @@ type Store = {
   canEdit: boolean;
   addTask: (title: string) => void;
   toggleTask: (id: string) => Promise<void>;
-  setTaskReminder: (id: string, reminderId: string, dueDate: string) => void;
+  setTaskReminder: (id: string, reminderIds: string[], dueDate: string) => void;
   addHabit: (title: string) => void;
   toggleHabitToday: (id: string) => void;
   setHabitReminder: (id: string, reminderId: string | null, reminderTime?: string) => void;
@@ -137,22 +137,29 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     const task = tasks.find(item => item.id === id);
     if (!task) return;
     const completing = !task.completed;
-    if (completing && task.reminderId && userId) {
+    const reminderIds = task.reminderIds ?? (task.reminderId ? [task.reminderId] : []);
+    if (completing && reminderIds.length > 0 && userId) {
       try {
-        await cancelReminder(userId, task.reminderId);
+        for (const reminderId of reminderIds) await cancelReminder(userId, reminderId);
       } catch (error) {
         setStorageError(error instanceof Error ? "Task reminder could not be cancelled: " + error.message : "Task reminder could not be cancelled.");
         return;
       }
     }
     setTasks(old => old.map(item => item.id === id
-      ? { ...item, completed: completing, reminderId: completing ? undefined : item.reminderId, dueDate: completing ? undefined : item.dueDate }
+      ? {
+          ...item,
+          completed: completing,
+          reminderId: completing ? undefined : item.reminderId,
+          reminderIds: completing ? undefined : item.reminderIds,
+          dueDate: completing ? undefined : item.dueDate,
+        }
       : item));
   }, [tasks, storageUnlocked, ready, activeUserId, userId]);
-  const setTaskReminder = useCallback((id: string, reminderId: string, dueDate: string) => {
+  const setTaskReminder = useCallback((id: string, reminderIds: string[], dueDate: string) => {
     if (!storageUnlocked || !ready || activeUserId !== userId) return;
     setTasks(old => old.map(item => item.id === id
-      ? { ...item, reminderId, dueDate, completed: false }
+      ? { ...item, reminderIds, reminderId: reminderIds[0], dueDate, completed: false }
       : item));
   }, [storageUnlocked, ready, activeUserId, userId]);
   const addHabit = useCallback((title: string) => {
