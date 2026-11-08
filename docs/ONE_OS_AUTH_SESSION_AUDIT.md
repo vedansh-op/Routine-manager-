@@ -25,7 +25,7 @@ The agreed mandatory-MFA policy is not implemented at the client routing boundar
 4. Add server-side Auth configuration/policy requiring MFA as appropriate; verify effective project settings in a non-production project.
 5. Test factor enrollment, challenge, invalid code, recovery, refresh, app restart, and factor removal/replacement.
 
-**Status: PARTIALLY IMPLEMENTED — TOTP enrollment/verification UI and an AAL2 app-route gate were added in `app/mfa.tsx` and `app/_layout.tsx`. Server-side enforcement, mandatory Auth project policy, recovery-code support, and runtime tests remain OPEN. Do not mark mandatory MFA complete yet.**
+**Status: PARTIALLY IMPLEMENTED — TOTP enrollment/verification UI and an AAL2 app-route gate were added in `app/mfa.tsx` and `app/_layout.tsx`. A database trigger guard was added in `supabase/migrations/202611080012_require_aal2_for_sensitive_writes.sql` for authenticated writes to shared-space lifecycle/membership/invitations, device keys, Snap deliveries, shared calendar activities, and weekly reports. Project-level MFA policy, recovery-code support, server-side Edge Function review, and runtime tests remain OPEN. Do not mark mandatory MFA complete yet.**
 
 ### AUTH-02 — Email verification is not explicitly enforced at sign-in
 
@@ -91,10 +91,18 @@ Complete and independently review the recovery-key/key-wrapping design before en
 
 **Status: OPEN — account password reset must not be described as data-key recovery.**
 
-## MFA implementation added on feature branch\n\n- `app/mfa.tsx` adds TOTP enrollment using a manually entered authenticator setup key, challenge, and six-digit verification. It does not display a QR code.\n- `app/_layout.tsx` checks Supabase Auth assurance level and routes non-AAL2 sessions to `/mfa`; protected screens are held behind a loading gate while assurance is checked. Device heartbeat/key registration runs only at AAL2.\n- This is a client-side access gate, not a replacement for server-side AAL2 checks on sensitive RPCs and Edge Functions. Supabase project MFA policy is not configured or verified here.\n- Recovery codes and factor replacement/recovery are not implemented.\n\n## Required non-production test matrix
+## MFA implementation added on feature branch
+
+- `app/mfa.tsx` adds TOTP enrollment using a manually entered authenticator setup key, challenge, and six-digit verification. It does not display a QR code.
+- `app/_layout.tsx` checks Supabase Auth assurance level and routes non-AAL2 sessions to `/mfa`; protected screens are held behind a loading gate while assurance is checked. Device heartbeat/key registration runs only at AAL2.
+- The new database trigger guard adds server-side AAL2 enforcement for the listed sensitive table writes, including writes made through SECURITY DEFINER RPCs. This does not prove every RPC, Edge Function, Storage policy, or table is covered; a complete server-side inventory and non-production execution tests remain required. Supabase project MFA policy is not configured or verified here.
+- Recovery codes and factor replacement/recovery are not implemented.
+
+## Required non-production test matrix
 
 - Verify an AAL1 password session cannot reach protected app screens before MFA challenge.
-- Verify AAL2 is required by each sensitive RPC/Edge Function.
+- Verify the AAL2 trigger rejects authenticated AAL1 writes and permits AAL2 writes for every guarded table; verify service-role Snap delivery/expiry jobs still work.
+- Inventory every remaining SECURITY DEFINER RPC and Edge Function for sensitive operations not covered by the guarded tables.
 - Verify unconfirmed email cannot use protected app functionality, regardless of whether signup returns a session.
 - Verify refresh, deep links, app restart and logout preserve the intended auth state.
 - Inspect session token persistence and backup behavior on physical Android devices.
