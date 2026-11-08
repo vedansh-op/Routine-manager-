@@ -60,6 +60,13 @@ export async function saveLocalSnap(
     // Do not silently normalize IDs: distinct IDs must not collide on disk.
     if (!safeId || safeId !== id) throw new Error("Invalid local photo identifier.");
 
+    // Never overwrite an existing memory for the same ID. A retry must
+    // verify/reuse the durable copy instead of replacing it before index commit.
+    const existing = await readIndex(userId);
+    if (existing.some(item => item.id === id)) {
+      throw new Error("This private memory is already saved on this device.");
+    }
+
     // Finish encryption before opening the target file, so key failures
     // cannot truncate an existing memory.
     const encryptedAtRest = await encryptLocalBytes(userId, plaintext);
@@ -67,12 +74,11 @@ export async function saveLocalSnap(
       const directory = vaultDirectory(userId);
       directory.create({ idempotent: true, intermediates: true });
       const file = localSnapFile(userId, id);
-      file.create({ intermediates: true, overwrite: true });
+      file.create({ intermediates: true, overwrite: false });
       await file.write(encryptedAtRest);
 
       const record: LocalSnap = { id, deliveryId, fileUri: file.uri, mimeType, capturedAt, direction };
-      const existing = await readIndex(userId);
-      const next = [record, ...existing.filter(item => item.id !== id)];
+      const next = [record, ...existing];
       await setEncryptedItem(indexKey(userId), userId, JSON.stringify(next));
       return record;
     } finally {
