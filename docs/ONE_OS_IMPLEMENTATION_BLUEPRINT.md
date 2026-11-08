@@ -218,12 +218,14 @@ The engineering/design documents are prepared and linked below. The phase is not
 - [x] Read-only database and Storage audit scripts — checked into supabase/tests/.
 - [x] Source-level local-key bootstrap safety and automated regression suite — present and CI-verified.
 - [x] Local notification persisted-state validation and regression tests — present and CI-verified.
+- [x] Snap crypto secret-buffer cleanup and automated round-trip/tamper tests — present and CI-verified; Snap v1 row metadata is not yet bound as AEAD associated data (see Phase 1 threat model and schema/archive specification).
+- [x] Bounded SecureStore auth-session writer/reader and interrupted-write regression tests — present and CI-verified; physical device validation remains open.
 - [ ] Independent cryptographic review of key separation, recovery envelope, nonce/AAD rules and device replacement.
 - [ ] PostgreSQL migration compilation/application, effective grants/RLS/Storage/trigger/RPC tests in a disposable Supabase project.
 - [ ] Two-account concurrency, MFA/AAL2, Snap lifecycle and archive-retention tests in that project.
 - [ ] Physical Android install/reboot/SecureStore/notification/2-device tests.
 
-The latest verified TypeScript workflow run for the source/test changes is 42530632242 on commit 1afabcc1a0e97c42196a6716ba7eae978427d5a1. It passed TypeScript validation, 27 recovery tests and 6 notification-state tests. This is not PostgreSQL, provider or physical-device evidence.
+The latest verified TypeScript workflow run for the source/test changes is 42532866305 on commit bf381bf71a99fa425bb5abddf3d44c83b5657566. It passed TypeScript validation, 27 recovery tests, 6 notification-state tests, 7 Snap crypto tests and 7 secure session-storage tests (47 tests total). This is not PostgreSQL, provider or physical-device evidence.
 
 The authoritative decision and exact external gates are in ONE_OS_PHASE_1_EXIT_REVIEW.md. No production SQL or service deployment is authorized by completing this document.
 
