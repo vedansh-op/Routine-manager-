@@ -1,54 +1,67 @@
 # ONE-OS
 
-An Android-first personal operating system for tasks, habits, routines, insights, and a two-person shared space.
+An Android-first personal operating system for tasks, habits, routines, focus, insights, private memories and an explicitly shared two-person space.
 
 Repository: [vedansh-op/Routine-manager-](https://github.com/vedansh-op/Routine-manager-)
 
-## Releases
+## Current phase and status
 
-- **Download APKs:** [ONE-OS Releases](https://github.com/vedansh-op/Routine-manager-/releases)
-- Each published version includes an Android APK, SHA-256 checksum, and generated change summary.
-- Releases are created from reviewed version tags (for example, `v1.0.1`), not from every intermediate commit.
-- See [the release guide](docs/RELEASING.md) for the publishing process and build limitations.
+ONE-OS is in **Phase 1 of 8 — Architecture, Security and Data Design**. The design/source baseline is documented on the open feature branch and PR #1:
 
-## Current implementation
+- [Phase 1 exit review](docs/ONE_OS_PHASE_1_EXIT_REVIEW.md)
+- [Project status](PROJECT_STATUS.md)
+- [Threat model](docs/ONE_OS_PHASE_1_THREAT_MODEL.md)
+- [Schema and encrypted archive specification](docs/ONE_OS_PHASE_1_SCHEMA_AND_ARCHIVE_SPEC.md)
+- [Failure and retry matrix](docs/ONE_OS_PHASE_1_FAILURE_MATRIX.md)
 
-- Expo SDK 54 / React Native / TypeScript app with Home, Tasks, Habits, Insights, Account, Shared Space, Our Time, Shared Calendar, and Private Photo Memories screens.
-- Supabase email/password authentication and code-only shared-space invitations (two members maximum); owners can replace an unused or expired invite before the second member joins.
-- Local-first task, habit, and completion history, encrypted at rest with XChaCha20-Poly1305; Supabase receives weekly aggregate reports only.
-- Shared activities can be scheduled with the phone's native date/time picker, stored as UTC instants, and displayed in each device's local timezone; the creator sees the Portugal-time conversion before saving.
-- Private photo memories: device-specific X25519 keys in Android SecureStore, ephemeral key agreement + HKDF-SHA256, XChaCha20-Poly1305 photo encryption, encrypted app-private local vault, recipient acknowledgement, and server-side expiry of pending cloud deliveries after 72 hours without a successful recipient heartbeat.
-- GitHub Actions workflows validate TypeScript and build standalone Android debug APKs for versioned releases.
+The engineering/design package is ready for external validation. Formal Phase 1 sign-off is still held on independent cryptographic review, disposable Supabase validation and physical Android testing. No production SQL, Edge Function, Auth configuration, cron, secrets or Storage objects were changed in this review.
 
-## Supabase setup order
+## Current app foundation
 
-Run these migrations in the Supabase SQL Editor, in this exact order:
+- Expo SDK 54 / Expo Router / React Native / TypeScript.
+- Home, Tasks, Habits, Routines, Focus, Insights, Account, Shared Space, Our Time, Shared Calendar, Private Photo Memories, security/MFA and Notifications screens.
+- Supabase email/password auth, persisted secure-session adapter, verified-email route gate and AAL2 challenge gate.
+- Local-first personal tasks, habits, routines and history encrypted at rest with XChaCha20-Poly1305 and a per-account key held in Android SecureStore.
+- Weekly aggregate reports only; private task titles, notes and detailed daily history are not uploaded as cloud rows.
+- Shared calendar entries use UTC instants and viewer-local display.
+- Private Snap source uses per-device X25519 keys, partner fingerprint pinning, encrypted ciphertext transfer and a local encrypted vault.
+- Security migration hardening covers invitation throttling, write limits, shared-history snapshots, Snap lifecycle, key visibility, active membership, AAL2 database guards and device-key revocation.
+- Local notifications cover tasks, habits, routines, focus, calendar and daily prompts, with quiet hours, category preferences, snooze/actions and reconciliation.
 
-1. `supabase/migrations/202611070001_profiles.sql`
-2. `supabase/migrations/202611070002_shared_spaces_invites.sql`
-3. `supabase/migrations/202611070003_weekly_reports.sql`
-4. `supabase/migrations/202611070004_shared_activity_calendar.sql`
-5. `supabase/migrations/202611070005_encrypted_snap_delivery.sql`
+These are source and migration changes on the feature branch. They are not proof of a configured/deployed Supabase project or physical Android behavior.
 
-Deploy both Edge Functions from `supabase/functions/`:
-- `ack-snap`
-- `expire-stale-snaps`
+## Important limitations
 
-For the expiry function, configure the server-only secrets `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `ONEOS_CRON_SECRET`. Then configure the 15-minute schedule using `supabase/cron/schedule_snap_expiry.sql` (requires pg_cron, pg_net, and Vault). Never put the service-role key in the app, APK, or repository.
+- Google Drive OAuth, encrypted backup versions, two-independent-Drive verification, selective history retrieval and Smart Merge are not implemented.
+- The encryption-key recovery envelope and historical Snap key recovery are not implemented. Uninstall or loss of a device can still make local-only data unavailable.
+- Device-key revocation blocks Snap key eligibility; it does not yet revoke the lost phone's Supabase login session or erase files already downloaded there.
+- Current temporary Snap delivery still uses Supabase Storage. A verified permanent Drive-copy proof path is not implemented.
+- Remote shared push and location/travel-aware reminders are not implemented.
+- A successful TypeScript check is not an APK build. A successful APK build is not a backend deployment or a two-device test.
+- A rooted or compromised device can expose plaintext while the app is unlocked; at-rest encryption cannot eliminate that risk.
 
-In the app, configure only the Supabase Project URL and publishable/anon key as Expo public environment variables. Add `oneos://auth` to Supabase Authentication redirect URLs.
+## Supabase validation — do not run on production
 
-## Data and privacy boundaries
+The feature branch contains 18 ordered SQL migrations under supabase/migrations/ (base schema plus hardening migrations 001–013). They have **not** been compiled/applied in a disposable test project during this review, and they have not been deployed to production.
 
-- Detailed task/habit/day history stays on each user's device. It is not uploaded as a cloud backup.
-- Supabase stores aggregate weekly reports and records explicitly added/shared in the shared space.
-- Private photo bytes are encrypted before upload. Each recipient saves the photo in their own encrypted app-private vault before acknowledgement removes the temporary cloud copy.
-- The 72-hour expiry is based on the server's last successful authenticated heartbeat. Offline app opens cannot reset it.
-- Uninstalling the app removes local history, local photos, and device private keys. There is no key-recovery or encrypted cloud backup yet.
-- First-contact photo-key verification now shows a shared-secret fingerprint and pins the partner's public key locally; both people must compare the same fingerprint over a separate trusted channel. Key changes are blocked. This flow still needs two-device testing and a verified recovery path. Encryption does not protect a rooted or compromised device.
+Before any deployment:
+1. Create a disposable, non-production Supabase project with synthetic test accounts and no production data.
+2. Reconcile its live schema/catalog with all checked-in migrations.
+3. Apply migrations in timestamp order and run supabase/tests/one_os_database_policy_audit.sql and supabase/tests/one_os_storage_policy_audit.sql.
+4. Verify effective grants, every RLS policy, SECURITY DEFINER function, trigger, Storage policy, Edge Function and cron behavior.
+5. Execute the negative two-account, concurrency, MFA/AAL2, Snap lifecycle and recovery test matrix.
+6. Obtain an independent cryptographic review before implementing or enabling key recovery and encrypted Drive backup.
 
-## Build and validation
+Do not apply the feature-branch migrations to a production Supabase project as part of ordinary testing. Never place a service-role key in the Android app, APK, GitHub repository or client-side environment.
 
-Open [GitHub Actions](https://github.com/vedansh-op/Routine-manager-/actions). A build is ready only when the latest relevant run completes successfully and includes its APK from that same run.
+## Build and releases
 
-The current source still needs live Supabase configuration, migrations/functions deployment, two-account testing, and physical Android testing. A successful TypeScript check or APK build alone does not prove backend flows work.
+- [GitHub Actions](https://github.com/vedansh-op/Routine-manager-/actions)
+- [ONE-OS Releases](https://github.com/vedansh-op/Routine-manager-/releases)
+- [Release process](docs/RELEASING.md)
+
+A previous debug APK exists for an older base commit; it is not a build of the latest feature branch. No current feature-branch APK or physical-device test is claimed by this Phase 1 review. Versioned releases are created only from reviewed tags. The configured release workflow creates a debug/test APK, not a Play Store production-signed build.
+
+## Engineering rule
+
+Keep production untouched until the test project, cryptographic review, device tests, PR review and an explicit deployment approval are complete.
