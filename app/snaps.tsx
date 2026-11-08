@@ -319,19 +319,23 @@ export default function SnapMemoriesScreen() {
         await assertActiveSnapUser(user.id);
         const ciphertext = new Uint8Array(await blob.arrayBuffer());
         await assertActiveSnapUser(user.id);
-        const plaintext = decryptSnap(ciphertext, {
-          ephemeralPublicKey: item.ephemeral_public_key,
-          wrapSalt: item.wrap_salt,
-          wrapNonce: item.wrap_nonce,
-          wrappedFileKey: item.wrapped_file_key,
-          contentNonce: item.content_nonce,
-        }, deviceKey.secretKey);
-
-        // The cloud copy is acknowledged only after successful local encryption and index write.
-        existing = await saveLocalSnap(
-          user.id, item.id, item.mime_type, item.captured_at, "received", plaintext, item.id,
-        );
-        plaintext.fill(0);
+        let plaintext: Uint8Array | null = null;
+        try {
+          plaintext = decryptSnap(ciphertext, {
+            ephemeralPublicKey: item.ephemeral_public_key,
+            wrapSalt: item.wrap_salt,
+            wrapNonce: item.wrap_nonce,
+            wrappedFileKey: item.wrapped_file_key,
+            contentNonce: item.content_nonce,
+          }, deviceKey.secretKey);
+          // The cloud copy is acknowledged only after successful local encryption and index write.
+          existing = await saveLocalSnap(
+            user.id, item.id, item.mime_type, item.captured_at, "received", plaintext, item.id,
+          );
+        } finally {
+          ciphertext.fill(0);
+          plaintext?.fill(0);
+        }
         await assertActiveSnapUser(user.id);
         // Show the durable local copy immediately; acknowledgement is a separate cloud step.
         setLocalSnaps(old => [existing!, ...old.filter(snap => snap.id !== existing!.id)]);
