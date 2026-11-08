@@ -173,7 +173,16 @@ export async function inspectLocalEncryptedData(userId: string): Promise<LocalEn
       }
     }
 
-    result.status = "complete";
+    const inspectionFields = [
+      result.dataKey,
+      result.appStoreRecord,
+      result.legacyUnscopedAppStoreRecord,
+      result.snapIndex,
+      result.snapVault,
+    ];
+    result.status = inspectionFields.every(value => value !== "unknown")
+      ? "complete"
+      : "unknown";
     return result;
   } catch {
     // Preserve partial observations but never convert an inspection failure
