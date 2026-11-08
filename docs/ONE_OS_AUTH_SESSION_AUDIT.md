@@ -58,7 +58,7 @@ Session tokens are persisted in ordinary app storage rather than the platform-ba
 **Required remediation**
 Evaluate a supported React Native Supabase Auth storage adapter backed by Android Keystore/iOS Keychain (for example, Expo SecureStore with a carefully tested adapter). Confirm token size/refresh behavior, migration of existing sessions, backup exclusions, and logout clearing. Do not simply change the adapter without migration and device testing.
 
-**Status: OPEN — no storage migration made.**
+**Status: IMPLEMENTED IN SOURCE — `src/lib/secureSessionStorage.ts` stores Supabase session data in bounded SecureStore chunks and commits a manifest only after all chunks are written. `src/lib/supabase.ts` now uses that adapter with the existing Supabase storage key, migrates the previous AsyncStorage session on first read, and clears the legacy copy after a successful secure write. This is not yet device-validated: test fresh login, upgrade with an existing session, token refresh, large sessions, interrupted writes, logout, reinstall behavior, and Android/iOS behavior before release. SecureStore corruption or partial chunk loss intentionally fails closed rather than silently restoring an older plaintext session.**
 
 ### AUTH-04 — No visible device/session management or revocation workflow
 
@@ -116,3 +116,11 @@ Complete and independently review the recovery-key/key-wrapping design before en
 **Do not mark mandatory MFA, verified-email enforcement, secure session storage, device management/revocation, or encryption-key recovery as complete.** These are open release blockers until implementation and non-production tests pass.
 
 No migrations were executed. No Supabase project was accessed. No Edge Function was deployed. No production data or settings were changed.
+
+
+## AUTH-03 implementation notes
+
+- Secure session values are split into small chunks to avoid platform secure-storage per-item size limits; a manifest pointer is updated only after all new chunks have been persisted.
+- The previous Supabase default storage key is preserved so existing installations can migrate the old AsyncStorage value without forcing an immediate sign-in.
+- After a secure write succeeds, the legacy AsyncStorage entry is removed. Logout removes both secure chunks/manifest and any legacy entry.
+- SecureStore writes use `WHEN_UNLOCKED_THIS_DEVICE_ONLY` accessibility. Physical-device testing is still required; source changes alone do not prove platform behavior or backup exclusion.
