@@ -173,7 +173,8 @@ begin
     archived_at = now();
   return new;
 end;
-$$;
+$;
+revoke all on function public.mirror_shared_activity_to_archive() from public;
 
 drop trigger if exists mirror_shared_activity_to_archive on public.shared_activities;
 create trigger mirror_shared_activity_to_archive
@@ -209,7 +210,8 @@ begin
   end if;
   return old;
 end;
-$$;
+$;
+revoke all on function public.mirror_shared_member_to_archive() from public;
 
 drop trigger if exists mirror_shared_member_to_archive on public.space_members;
 create trigger mirror_shared_member_to_archive
