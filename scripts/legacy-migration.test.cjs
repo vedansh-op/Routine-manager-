@@ -79,7 +79,7 @@ test("a cancelled startup does not claim or remove the legacy record", async () 
   assert.equal(storage.values.get("one-os-v1"), "legacy-data");
 });
 
-test("cancellation after encrypted persistence keeps the original for safe retry", async () => {
+test("migration finishes plaintext cleanup once the encrypted copy is committed", async () => {
   const storage = createStorage({ "one-os-v1": "legacy-data" });
   let current = true;
   let persisted = null;
@@ -89,8 +89,8 @@ test("cancellation after encrypted persistence keeps the original for safe retry
     async value => { persisted = value; current = false; },
     () => current,
   );
-  assert.equal(migrated, false);
+  assert.equal(migrated, true);
   assert.equal(persisted, "legacy-data");
   assert.equal(storage.values.get("one-os-v1-owner"), "account-a");
-  assert.equal(storage.values.get("one-os-v1"), "legacy-data");
+  assert.equal(storage.values.has("one-os-v1"), false);
 });
