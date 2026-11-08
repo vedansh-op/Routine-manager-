@@ -42,12 +42,12 @@ The recovery envelope is a small key backup, not a substitute for the encrypted 
 1. User signs into the same ONE-OS account on the replacement phone and completes email verification and Supabase AAL2.
 2. User explicitly chooses recovery and obtains the encrypted recovery envelope from an authorized Drive backup.
 3. User enters/scans the recovery secret locally. The app derives the wrapping key, authenticates the envelope, and decrypts the two key materials only in memory.
-4. Before changing any account/device state, validate key lengths, envelope version, account binding, device ID format, and that the restored public key derived from the private key matches the expected registered public key.
-5. Restore the local data key into the replacement phone's SecureStore and restore the X25519 private key. Never overwrite an existing non-empty key silently; require an explicit conflict/recovery path.
-6. Register a **new installation device ID** for the replacement phone. Preserve the old X25519 key material for decrypting historical Snap envelopes, but do not pretend the old installation itself has returned.
-7. Add a reviewed, AAL2-protected server workflow to authorize the replacement device to retrieve retained historical deliveries addressed to the prior device ID. This workflow must only move/authorize the user's own recipient deliveries, must preserve audit history, and must not un-revoke the lost device. It must not be implemented as a client-side bypass of Storage RLS.
-8. Verify the restored local vault and at least one historical Snap/archive item before marking recovery complete. If verification fails, leave the original server-side encrypted copies untouched and provide a safe retry path.
-9. After recovery, allow the user to create a fresh device key and re-wrap/re-address historical items through a separately reviewed migration. Do not silently rotate keys during sign-in.
+4. Before changing any account/device state, validate key lengths, envelope version, account binding, original device ID format, and that the restored historical public key derived from the private key matches the original registered public key (including when that original row is revoked).
+5. Restore the local data key and historical X25519 private key into separate, explicitly versioned SecureStore aliases. Never overwrite an existing non-empty key silently; require an explicit conflict/recovery path. The historical private key is decrypt-only and must not be used for new outgoing Snap delivery.
+6. Generate a fresh active X25519 keypair and a new random installation device ID for the replacement phone, then register that new public key normally. Keep the historical key separate; do not pretend the old installation itself has returned or clear its revocation marker.
+7. Use the dual-key possession challenge in Section 5 to authorize retrieval of each retained historical delivery addressed to the prior device ID. The server workflow must preserve audit history and must not un-revoke the lost device or bypass Storage RLS.
+8. Verify the restored local vault and at least one historical Snap item before marking recovery complete. If verification fails, leave the original server-side encrypted copies untouched and provide a safe retry path.
+9. Any later re-wrapping of old file keys to the new active public key is a separately reviewed migration. Do not silently rotate keys during sign-in.
 
 ## 4. Important security boundaries
 
