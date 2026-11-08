@@ -7,12 +7,10 @@ language plpgsql immutable
 set search_path = ''
 as $$
 declare v_item record; v_allowed text[] := array[
+  'tasks_total',
   'tasks_completed',
-  'habits_completed',
-  'focus_minutes',
-  'streak_days',
-  'active_days',
-  'completion_percent'
+  'habits_total',
+  'habit_checkins_last_7_days'
 ];
 begin
   if p_report is null or jsonb_typeof(p_report) <> 'object' then return false; end if;
@@ -27,9 +25,15 @@ begin
     if v_item.key = 'completion_percent'
        and (v_item.value #>> '{}')::numeric > 100 then return false; end if;
   end loop;
+  if not (p_report ?& array['tasks_total','tasks_completed','habits_total','habit_checkins_last_7_days']) then
+    return false;
+  end if;
+  if (p_report->>'tasks_completed')::numeric > (p_report->>'tasks_total')::numeric then
+    return false;
+  end if;
   return true;
 end;
-$$;
+$;
 
 revoke all on function public.is_valid_weekly_aggregate(jsonb) from public;
 grant execute on function public.is_valid_weekly_aggregate(jsonb) to authenticated;
