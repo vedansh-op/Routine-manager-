@@ -36,10 +36,18 @@ export default function Habits() {
         title: "Habit check-in: " + habit.title,
         body: "A small step still counts. Check in when you're ready.",
         route: "/habits",
+        sourceKey: "habit:" + habit.id,
         repeat: { kind: "daily", hour, minute },
       });
+      if (habit.reminderId && habit.reminderId !== next.id) {
+        try {
+          await cancelReminder(user.id, habit.reminderId);
+        } catch (error) {
+          await cancelReminder(user.id, next.id).catch(() => undefined);
+          throw error;
+        }
+      }
       setHabitReminder(habit.id, next.id, String(hour).padStart(2, "0") + ":" + String(minute).padStart(2, "0"));
-      if (habit.reminderId) await cancelReminder(user.id, habit.reminderId).catch(() => undefined);
     } catch (error) {
       Alert.alert("Couldn't set habit reminder", error instanceof Error ? error.message : "Please try again.");
     } finally {
