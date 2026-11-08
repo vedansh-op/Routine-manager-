@@ -24,6 +24,7 @@ import {
   NotificationHistoryEntry,
   Reminder,
   requestNotificationPermission,
+  rescheduleReminder,
   scheduleReminder,
   snoozeReminder,
   updateNotificationSettings,
@@ -264,6 +265,44 @@ export default function NotificationsScreen() {
     }
   }
 
+  function moveReminder(reminder: Reminder) {
+    if (reminder.repeat.kind !== "once") {
+      Alert.alert("Repeating reminder", "Change the time of a daily or weekly reminder by removing it and creating it again with the new time.");
+      return;
+    }
+    const original = new Date(reminder.repeat.date);
+    const initial = original.getTime() > Date.now() ? original : new Date(Date.now() + 60 * 60 * 1000);
+    DateTimePickerAndroid.open({
+      value: initial,
+      mode: "date",
+      minimumDate: new Date(),
+      onChange: (dateEvent, pickedDate) => {
+        if (dateEvent.type !== "set" || !pickedDate) return;
+        const nextDate = new Date(initial);
+        nextDate.setFullYear(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
+        DateTimePickerAndroid.open({
+          value: nextDate,
+          mode: "time",
+          is24Hour: false,
+          onChange: async (timeEvent, pickedTime) => {
+            if (timeEvent.type !== "set" || !pickedTime || !user?.id) return;
+            const due = new Date(nextDate);
+            due.setHours(pickedTime.getHours(), pickedTime.getMinutes(), 0, 0);
+            setBusy(true);
+            try {
+              const updated = await rescheduleReminder(user.id, reminder.id, due);
+              setReminders(old => old.map(item => item.id === reminder.id ? updated : item));
+            } catch (error) {
+              Alert.alert("Couldn't move reminder", error instanceof Error ? error.message : "Please try again.");
+            } finally {
+              setBusy(false);
+            }
+          },
+        });
+      },
+    });
+  }
+
   async function snooze(reminder: Reminder) {
     if (!user?.id) return;
     setBusy(true);
@@ -390,6 +429,7 @@ export default function NotificationsScreen() {
         </View>
         {!reminder.completed ? <View style={s.reminderActions}>
           <Pressable disabled={busy} onPress={() => void snooze(reminder)}><Text style={s.action}>+10m</Text></Pressable>
+          {reminder.repeat.kind === "once" ? <Pressable disabled={busy} onPress={() => moveReminder(reminder)}><Text style={s.action}>Move</Text></Pressable> : null}
           <Pressable disabled={busy} onPress={() => void removeReminder(reminder)}><Text style={s.remove}>Remove</Text></Pressable>
         </View> : null}
       </View>)}
