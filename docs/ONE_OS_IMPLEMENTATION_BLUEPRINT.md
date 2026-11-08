@@ -225,7 +225,7 @@ The engineering/design documents are prepared and linked below. The phase is not
 - [ ] Two-account concurrency, MFA/AAL2, Snap lifecycle and archive-retention tests in that project.
 - [ ] Physical Android install/reboot/SecureStore/notification/2-device tests.
 
-The latest verified TypeScript workflow run for the source/test changes is 42532866305 on commit bf381bf71a99fa425bb5abddf3d44c83b5657566. It passed TypeScript validation, 27 recovery tests, 6 notification-state tests, 7 Snap crypto tests and 7 secure session-storage tests (47 tests total). This is not PostgreSQL, provider or physical-device evidence.
+The latest verified TypeScript workflow run for the source/test changes is 42533644210 on commit 47eeade84cfb7d045dc096471568dfd1ffb9fc10. It passed TypeScript validation, 27 recovery tests, 6 notification-state tests, 7 Snap crypto tests and 7 secure session-storage tests (47 tests total). This is not PostgreSQL, provider or physical-device evidence.
 
 The authoritative decision and exact external gates are in ONE_OS_PHASE_1_EXIT_REVIEW.md. No production SQL or service deployment is authorized by completing this document.
 
