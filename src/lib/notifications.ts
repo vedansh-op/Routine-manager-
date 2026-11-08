@@ -206,21 +206,24 @@ function channelId(category: NotificationCategory, settings: NotificationSetting
   ].join("-");
 }
 
-export async function initializeNotificationChannels() {
+async function ensureNotificationChannels(settings: NotificationSettings) {
   if (Platform.OS !== "android") return;
-  const state = defaultState();
   for (const category of NOTIFICATION_CATEGORIES) {
-    const id = channelId(category, state.settings);
+    const id = channelId(category, settings);
     await Notifications.setNotificationChannelAsync(id, {
       name: CATEGORY_LABELS[category],
       description: CATEGORY_LABELS[category] + " reminders from ONE-OS",
       importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: state.settings.vibration ? [0, 250, 120, 250] : [],
-      sound: state.settings.sound ? "default" : null,
+      vibrationPattern: settings.vibration ? [0, 250, 120, 250] : undefined,
+      sound: settings.sound ? "default" : null,
       lightColor: "#A99CFF",
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
     });
   }
+}
+
+export async function initializeNotificationChannels() {
+  await ensureNotificationChannels(DEFAULT_SETTINGS);
 }
 
 export async function requestNotificationPermission() {
@@ -236,7 +239,9 @@ export async function getNotificationPermission() {
 }
 
 export async function getNotificationState(userId: string) {
-  return loadState(userId);
+  const state = await loadState(userId);
+  await ensureNotificationChannels(state.settings);
+  return state;
 }
 
 function buildTrigger(repeat: RepeatRule, settings: NotificationSettings, category: NotificationCategory) {
@@ -316,6 +321,7 @@ export async function scheduleReminder(userId: string, draft: ReminderDraft) {
   }
   const permission = await Notifications.getPermissionsAsync();
   if (!permission.granted) throw new Error("Notification permission is off. Enable it first.");
+  await ensureNotificationChannels(state.settings);
   const reminder: Reminder = {
     id: makeId(),
     category: draft.category,
@@ -390,9 +396,9 @@ export async function updateNotificationSettings(
     categoryEnabled: { ...oldSettings.categoryEnabled, ...patch.categoryEnabled },
     quietHours: { ...oldSettings.quietHours, ...patch.quietHours },
   };
+  await ensureNotificationChannels(state.settings);
   const permission = await Notifications.getPermissionsAsync();
   if (permission.granted) {
-    const replacements: Array<{ reminder: Reminder; oldId: string | null; newId: string | null }> = [];
     for (const reminder of state.reminders) {
       const oldId = reminder.notificationId;
       if (oldId) {
@@ -403,7 +409,6 @@ export async function updateNotificationSettings(
         try {
           const newId = await scheduleNative(userId, reminder, state.settings);
           reminder.notificationId = newId;
-          replacements.push({ reminder, oldId, newId });
         } catch {
           reminder.notificationId = null;
         }
@@ -411,20 +416,6 @@ export async function updateNotificationSettings(
     }
   }
   await saveState(userId, state);
-  if (Platform.OS === "android") {
-    for (const category of NOTIFICATION_CATEGORIES) {
-      const id = channelId(category, state.settings);
-      await Notifications.setNotificationChannelAsync(id, {
-        name: CATEGORY_LABELS[category],
-        description: CATEGORY_LABELS[category] + " reminders from ONE-OS",
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: state.settings.vibration ? [0, 250, 120, 250] : [],
-        sound: state.settings.sound ? "default" : null,
-        lightColor: "#A99CFF",
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
-      });
-    }
-  }
   return state;
 }
 
