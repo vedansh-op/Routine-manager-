@@ -13,6 +13,8 @@ ONE-OS is in **Phase 1 of 8 — Architecture, Security and Data Design**. The de
 - [Threat model](docs/ONE_OS_PHASE_1_THREAT_MODEL.md)
 - [Schema and encrypted archive specification](docs/ONE_OS_PHASE_1_SCHEMA_AND_ARCHIVE_SPEC.md)
 - [Failure and retry matrix](docs/ONE_OS_PHASE_1_FAILURE_MATRIX.md)
+- [Supabase security audit and final policy/function inventory](docs/ONE_OS_SUPABASE_SECURITY_AUDIT.md)
+- [Phase 1 exit review](docs/ONE_OS_PHASE_1_EXIT_REVIEW.md)
 
 The engineering/design package is ready for external validation. Formal Phase 1 sign-off is still held on independent cryptographic review, disposable Supabase validation and physical Android testing. No production SQL, Edge Function, Auth configuration, cron, secrets or Storage objects were changed in this review.
 
@@ -60,7 +62,7 @@ Do not apply the feature-branch migrations to a production Supabase project as p
 - [ONE-OS Releases](https://github.com/vedansh-op/Routine-manager-/releases)
 - [Release process](docs/RELEASING.md)
 
-A previous debug APK exists for an older base commit; it is not a build of the latest feature branch. No current feature-branch APK or physical-device test is claimed by this Phase 1 review. Versioned releases are created only from reviewed tags. The configured release workflow creates a debug/test APK, not a Play Store production-signed build.
+A current feature-branch standalone debug APK was built successfully in [GitHub Actions run 42533640626](https://github.com/vedansh-op/Routine-manager-/actions/runs/42533640626) and uploaded as artifact `ONE-OS-debug-apk`. The embedded JavaScript bundle was verified. It has not yet been installed/tested on a physical Android device. Versioned releases are created only from reviewed tags. This workflow creates a debug/test APK, not a Play Store production-signed build.
 
 ## Engineering rule
 
