@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - phase-1/one-os-architecture-blueprint
+      - "fix/**"
     paths:
       - "app/**"
       - "src/**"
