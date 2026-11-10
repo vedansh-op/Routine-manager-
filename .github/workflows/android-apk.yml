@@ -6,6 +6,8 @@ on:
     branches:
       - main
       - phase-1/one-os-architecture-blueprint
+    tags:
+      - "v*"
     paths:
       - "app/**"
       - "src/**"
@@ -69,11 +71,11 @@ jobs:
           const fs = require("node:fs");
           const path = "android/app/build.gradle";
           let gradle = fs.readFileSync(path, "utf8");
-          if (!/react\s*\{/.test(gradle)) {
+          if (!/react\\s*\\{/.test(gradle)) {
             throw new Error("Could not find the React Native Gradle configuration block.");
           }
-          if (!/react\s*\{\s*debuggableVariants\s*=\s*\[\s*\]/.test(gradle)) {
-            gradle = gradle.replace(/react\s*\{/, match => match + "\n    debuggableVariants = []");
+          if (!/react\\s*\\{\\s*debuggableVariants\\s*=\\s*\\[\\s*\\]/.test(gradle)) {
+            gradle = gradle.replace(/react\\s*\\{/, match => match + "\\n    debuggableVariants = []");
           }
           fs.writeFileSync(path, gradle);
           console.log("Configured debug APK to include its JavaScript bundle.");
@@ -105,3 +107,26 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+  publish-release:
+    name: Publish versioned APK to GitHub Releases
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download APK from this build
+        uses: actions/download-artifact@v4
+        with:
+          name: ONE-OS-debug-apk
+          path: release-assets
+
+      - name: Create GitHub Release and attach APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ONE-OS ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release-assets/app-debug.apk
