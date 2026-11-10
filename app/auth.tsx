@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useAuth } from "@/auth/AuthProvider";
@@ -12,14 +12,47 @@ export default function AuthScreen() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const activeMode = recovery ? "recovery" : mode;
+
+  async function continueWithGoogle() {
+    if (!supabase || !isSupabaseConfigured || busy) return;
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: "oneos://auth",
+          skipBrowserRedirect: true,
+          queryParams: { access_type: "offline", prompt: "select_account" },
+        },
+      });
+      if (error) throw error;
+      if (!data.url) throw new Error("Supabase did not return a Google sign-in URL.");
+      // The app's oneos://auth deep-link listener exchanges the returned PKCE code.
+      await Linking.openURL(data.url);
+    } catch (error) {
+      Alert.alert(
+        "Google sign-in unavailable",
+        error instanceof Error
+          ? error.message
+          : "Check that Google is enabled as a Supabase Auth provider and try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit() {
     if (!supabase || !isSupabaseConfigured) return;
     const cleanEmail = email.trim().toLowerCase();
     if (activeMode !== "recovery" && !cleanEmail) return Alert.alert("Email required", "Enter your email address.");
-    if ((activeMode === "login" || activeMode === "signup") && password.length < 8) return Alert.alert("Password too short", "Use at least 8 characters.");
+    // Do not trim, lowercase, or otherwise rewrite passwords. Password Manager
+    // generated symbols must be submitted exactly as entered.
+    if ((activeMode === "login" || activeMode === "signup" || activeMode === "recovery") && password.length < 8) {
+      return Alert.alert("Password too short", "Use at least 8 characters.");
+    }
     setBusy(true);
     try {
       if (activeMode === "signup") {
@@ -71,11 +104,20 @@ export default function AuthScreen() {
         <View style={s.notice}><Text style={s.noticeTitle}>Authentication setup required</Text><Text style={s.noticeText}>Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or EXPO_PUBLIC_SUPABASE_ANON_KEY) to your local .env file, then rebuild the app. Never put a service-role key in the app.</Text></View>
       </> : <>
         {activeMode === "signup" && <TextInput value={name} onChangeText={setName} placeholder="Your name (optional)" placeholderTextColor="#777d8c" style={s.input} autoCapitalize="words" />}
-        {activeMode !== "recovery" && <TextInput value={email} onChangeText={setEmail} placeholder="Email address" placeholderTextColor="#777d8c" style={s.input} autoCapitalize="none" keyboardType="email-address" autoComplete="email" />}
-        {activeMode !== "forgot" && <TextInput value={password} onChangeText={setPassword} placeholder={activeMode === "recovery" ? "New password" : "Password"} placeholderTextColor="#777d8c" style={s.input} secureTextEntry autoCapitalize="none" />}
+        {activeMode !== "recovery" && <TextInput value={email} onChangeText={setEmail} placeholder="Email address" placeholderTextColor="#777d8c" style={s.input} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="email" />}
+        {activeMode !== "forgot" && <View style={s.passwordRow}>
+          <TextInput value={password} onChangeText={setPassword} placeholder={activeMode === "recovery" ? "New password" : "Password"} placeholderTextColor="#777d8c" style={[s.input, s.passwordInput]} secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false} autoComplete={activeMode === "signup" || activeMode === "recovery" ? "new-password" : "current-password"} />
+          <Pressable onPress={() => setShowPassword(value => !value)} accessibilityRole="button" accessibilityLabel={showPassword ? "Hide password" : "Show password"} style={s.showPassword}><Text style={s.showPasswordText}>{showPassword ? "Hide" : "Show"}</Text></Pressable>
+        </View>}
         <Pressable disabled={busy} onPress={submit} style={[s.primary, busy && { opacity: 0.6 }]}>{busy ? <ActivityIndicator color="#101216" /> : <Text style={s.primaryText}>{activeMode === "signup" ? "Create account" : activeMode === "forgot" ? "Send reset link" : activeMode === "recovery" ? "Update password" : "Sign in"}</Text>}</Pressable>
+        {!recovery && (activeMode === "login" || activeMode === "signup") && <>
+          <View style={s.separator}><View style={s.separatorLine} /><Text style={s.separatorText}>OR</Text><View style={s.separatorLine} /></View>
+          <Pressable disabled={busy} onPress={continueWithGoogle} style={[s.googleButton, busy && { opacity: 0.6 }]}>
+            {busy ? <ActivityIndicator color="#f4f2ff" /> : <Text style={s.googleText}>G  Continue with Google</Text>}
+          </Pressable>
+        </>}
         {!recovery && activeMode === "login" && <Pressable onPress={() => setMode("forgot")}><Text style={s.action}>Forgot password?</Text></Pressable>}
-        {!recovery && <Pressable onPress={() => setMode(activeMode === "signup" ? "login" : "signup")}><Text style={s.action}>{activeMode === "signup" ? "Already have an account? Sign in" : "New to ONE-OS? Create account"}</Text></Pressable>}
+        {!recovery && <Pressable onPress={() => { setShowPassword(false); setMode(activeMode === "signup" ? "login" : "signup"); }}><Text style={s.action}>{activeMode === "signup" ? "Already have an account? Sign in" : "New to ONE-OS? Create account"}</Text></Pressable>}
         {!recovery && activeMode === "forgot" && <Pressable onPress={() => setMode("login")}><Text style={s.action}>Back to sign in</Text></Pressable>}
       </>}
       <Text style={s.footer}>Private by design · ONE-OS</Text>
@@ -83,5 +125,5 @@ export default function AuthScreen() {
   </KeyboardAvoidingView>;
 }
 const s = StyleSheet.create({
-  page:{flex:1,backgroundColor:"#101216",justifyContent:"center"},content:{padding:26},brand:{color:"#f4f2ff",fontSize:18,fontWeight:"800",letterSpacing:4},eyebrow:{color:"#9b8cff",fontSize:10,letterSpacing:2,marginTop:10},title:{color:"#f4f2ff",fontSize:32,fontWeight:"700",marginTop:42},subtitle:{color:"#9699a5",fontSize:14,marginTop:9,marginBottom:26},input:{backgroundColor:"#1a1d24",borderWidth:1,borderColor:"#2a2e38",borderRadius:14,padding:16,color:"#f4f2ff",marginBottom:12,fontSize:15},primary:{backgroundColor:"#b7adff",padding:17,borderRadius:14,alignItems:"center",marginTop:8},primaryText:{color:"#101216",fontWeight:"800",fontSize:15},action:{color:"#c7bfff",textAlign:"center",marginTop:20,fontSize:13},notice:{backgroundColor:"#1a1d24",borderWidth:1,borderColor:"#49415f",borderRadius:14,padding:16,marginTop:8},noticeTitle:{color:"#f4f2ff",fontWeight:"700",marginBottom:8},noticeText:{color:"#aeb1bd",lineHeight:20,fontSize:13},footer:{color:"#666c79",fontSize:11,textAlign:"center",marginTop:54}
+  page:{flex:1,backgroundColor:"#101216",justifyContent:"center"},content:{padding:26},brand:{color:"#f4f2ff",fontSize:18,fontWeight:"800",letterSpacing:4},eyebrow:{color:"#9b8cff",fontSize:10,letterSpacing:2,marginTop:10},title:{color:"#f4f2ff",fontSize:32,fontWeight:"700",marginTop:42},subtitle:{color:"#9699a5",fontSize:14,marginTop:9,marginBottom:26},input:{backgroundColor:"#1a1d24",borderWidth:1,borderColor:"#2a2e38",borderRadius:14,padding:16,color:"#f4f2ff",marginBottom:12,fontSize:15},passwordRow:{position:"relative",justifyContent:"center"},passwordInput:{paddingRight:72},showPassword:{position:"absolute",right:16,top:0,bottom:12,justifyContent:"center"},showPasswordText:{color:"#c7bfff",fontSize:12,fontWeight:"700"},primary:{backgroundColor:"#b7adff",padding:17,borderRadius:14,alignItems:"center",marginTop:8},primaryText:{color:"#101216",fontWeight:"800",fontSize:15},separator:{flexDirection:"row",alignItems:"center",gap:12,marginTop:20},separatorLine:{height:1,backgroundColor:"#2a2e38",flex:1},separatorText:{color:"#777d8c",fontSize:11},googleButton:{borderWidth:1,borderColor:"#514a70",padding:16,borderRadius:14,alignItems:"center",marginTop:14},googleText:{color:"#f4f2ff",fontWeight:"700",fontSize:14},action:{color:"#c7bfff",textAlign:"center",marginTop:20,fontSize:13},notice:{backgroundColor:"#1a1d24",borderWidth:1,borderColor:"#49415f",borderRadius:14,padding:16,marginTop:8},noticeTitle:{color:"#f4f2ff",fontWeight:"700",marginBottom:8},noticeText:{color:"#aeb1bd",lineHeight:20,fontSize:13},footer:{color:"#666c79",fontSize:11,textAlign:"center",marginTop:54}
 });
