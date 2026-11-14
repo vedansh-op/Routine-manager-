@@ -62,3 +62,6 @@ jobs:
 
       - name: Run database-source inventory tests
         run: npm run test:database-source
+
+      - name: Run auth redirect contract tests
+        run: npm run test:auth-contract
