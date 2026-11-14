@@ -11,7 +11,8 @@
     "test:notifications": "node --test scripts/notification-state.test.cjs",
     "test:crypto": "node --test scripts/snap-crypto.test.mjs",
     "test:session": "node --test scripts/secure-session-storage.test.cjs",
-    "test:database-source": "node --test scripts/database-source-inventory.test.cjs"
+    "test:database-source": "node --test scripts/database-source-inventory.test.cjs",
+    "test:auth-contract": "node --test scripts/auth-redirect-contract.test.cjs"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
